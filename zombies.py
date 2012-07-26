@@ -99,6 +99,11 @@ def apply_script(protocol, connection, config):
             grenade_packet.velocity = (0.0, 0.0, 0.0)
             self.protocol.send_contained(grenade_packet)
         
+        def on_line_build_attempt(self, points):
+            if self.mode == ZOMBIE:
+                return False
+            return connection.on_line_build_attempt(points)
+        
         def on_block_build_attempt(self, x, y, z):
             if self.mode == ZOMBIE:
                 return False
@@ -140,7 +145,6 @@ def apply_script(protocol, connection, config):
             new_hit = connection.on_hit(self, hit_amount, hit_player, type, grenade)
             if new_hit is not None:
                 return new_hit
-## invis/togglekill fix
             other_player_location = hit_player.world_object.position
             other_player_location = (other_player_location.x, other_player_location.y, other_player_location.z)
             player_location = self.world_object.position
@@ -150,7 +154,6 @@ def apply_script(protocol, connection, config):
             new_hit = hit_amount * damagemulti
             if hit_player.mode == ZOMBIE and self.weapon == SMG_WEAPON:
                    new_hit = (new_hit/(self.protocol.ZOMBIE_HP/100))
-## removed hit_player.hit() (a few of them)
                    if hit_player != self:
                        if new_hit >=25:
                            self.create_explosion_effect(hit_player.world_object.position)
@@ -165,11 +168,7 @@ def apply_script(protocol, connection, config):
                            self.create_explosion_effect(hit_player.world_object.position)
                            self.send_chat("!!!HOLY SHIT UBER DAMAGE!!!")
             if self.mode == ZOMBIE and self.tool == WEAPON_TOOL:
-                self.send_chat(" |    | \____/  \____/ \____/ |    | \____/ ")
-                self.send_chat(" |   \| |    |  |  --\ |    | |   \|      \ ")
-                self.send_chat(" |  \ | |    |  |      |    | |  \ | \____  ")
-                self.send_chat(" |\   | /----\  /----\ |    | |\   | /----\ ")
-                return False
+                return False #this should never happen, but just in case
             if (self.mode == HUMAN and self.tool == SPADE_TOOL and 
                      self.team == hit_player.team and self.can_heal == True):
                    if hit_player.hp >= 100:
@@ -196,7 +195,6 @@ def apply_script(protocol, connection, config):
             weapon_reload.player_id = self.player_id
             weapon_reload.clip_ammo = 0
             weapon_reload.reserve_ammo = 0
-            self.grenades = 0
             self.weapon_object.clip_ammo = 0
             self.weapon_object.reserve_ammo = 0
             self.send_contained(weapon_reload)
