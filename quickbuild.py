@@ -159,7 +159,8 @@ def qbclear(connection):
 
 @admin
 def qbundo(connection):
-    connection.quickbuild_recorded.pop()
+    if len(connection.quickbuild_recorded):
+        connection.quickbuild_recorded.pop()
 
 def build(connection, structure = None):
     if not connection.quickbuild_allowed:
