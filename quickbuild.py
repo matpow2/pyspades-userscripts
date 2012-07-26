@@ -1,10 +1,7 @@
 from commands import add, admin
 from math import floor, atan2
 from pyspades.constants import *
-from pyspades.server import block_action
-from twisted.internet.task import LoopingCall
-
-MESSAGE_UPDATE_RATE = 3
+from pyspades.contained import BlockAction
 
 QUICKBUILD_WALL = ((0, 0, 0), (-1, 0, 0), (-1, 0, 1), (-2, 0, 0), (-2, 0, 1), 
                    (-3, 0, 0), (-3, 0, 1), (0, 0, 1), (1, 0, 0), (1, 0, 1),
@@ -145,17 +142,24 @@ UPDATE_RATE = 1.0
 
 # Use these commands to create quickbuild structures.
 @admin
-def qbtoggle(connection):
-    connection.quickbuild_create = not connection.quickbuild_create
+def qbrecord(connection):
+    if connection.quickbuild_mode == QB_RECORDING:
+        connection.quickbuild_mode = QB_DISABLED
+        qbclear(connection)
+        connection.send_chat('You are no longer recording.')
+    else:
+        connection.quickbuild_mode = QB_RECORDING
+        connection.send_chat('You are now recording.')
 
 @admin
 def qbprint(connection):
     print connection.quickbuild_recorded
+    connection.send_chat('Printed quickbuild data.')
 
 @admin
 def qbclear(connection):
     connection.quickbuild_recorded = []
-    connection.quickbuild_origin = None
+    connection.quickbuild_record_origin = None
 
 @admin
 def qbundo(connection):
@@ -164,15 +168,19 @@ def qbundo(connection):
 
 def build(connection, structure = None):
     if not connection.quickbuild_allowed:
-        return 'You are not allowed to Build'
+        connection.send_chat('You are not allowed to build')
+        return
     if structure == None:
+        connection.quickbuild_mode = QB_DISABLED
+        connection.quickbuild_index = None
         for i in xrange(len(QUICKBUILD_STRUCTURES)):
             connection.send_chat('%i: Build a %s. Requires %i kills.' 
                 % (i, QUICKBUILD_DESCRIPTION[i], QUICKBUILD_COST[i]))
         connection.send_chat('/build BUILDNUMBER')
     else:
-        if connection.quickbuild != None:
-            connection.send_chat('You already have a structure ready to build.')
+        if connection.quickbuid_index != None:
+            connection.send_chat("You're already building #%i: %s." 
+                % (connection.quickbuid_index, QUICKBUILD_DESCRIPTION[connection.quickbuid_index]))
             return
         try:
             structure = int(structure)
@@ -184,23 +192,25 @@ def build(connection, structure = None):
         cost = QUICKBUILD_COST[structure]
         if connection.quickbuild_points >= cost:
             connection.quickbuild_points -= cost
-            connection.quickbuild = structure
+            connection.quickbuid_index = structure
             connection.send_chat('The next block you place will build a %s.' 
                 % QUICKBUILD_DESCRIPTION[structure])
-            connection.quickbuild_enabled = True
+            connection.quickbuild_mode = QB_ENABLED
         else:
-            connection.send_chat('You need %i more kills if you want to build this structure.' 
-                % (cost-connection.quickbuild_points))
+            connection.send_chat('You need %i more kills if you want to build #%i: %s.' 
+                % (cost-connection.quickbuild_points, structure, QUICKBUILD_DESCRIPTION[structure]))
 
 def b(connection, structure = None):
     build(connection, structure)
 
 add(build)
 add(b)
-add(qbtoggle)
+add(qbrecord)
 add(qbprint)
 add(qbclear)
 add(qbundo)
+
+QB_DISABLED, QB_ENABLED, QB_RECORDING = xrange(3)
 
 def apply_script(protocol, connection, config):
     class BuildConnection(connection):
@@ -218,60 +228,72 @@ def apply_script(protocol, connection, config):
         
         def on_join(self):
             self.quickbuild_allowed = True
-            self.quickbuild = None
+            self.quickbuid_index = None
             self.quickbuild_points = 0
-            self.quickbuild_enabled = False
-            self.quickbuild_create = False
-            self.quickbuild_origin = None
+            self.quickbuild_mode = QB_DISABLED
+            self.quickbuild_record_origin = None
             self.quickbuild_recorded = []
             return connection.on_join(self)
         
         def on_kill(self, killer, type, grenade):
-            if killer is not None and self.team is not killer.team and self != killer:
-                killer.quickbuild_points += 1
-            return connection.on_kill(self, killer, type, grenade)
+            ret = connection.on_kill(self, killer, type, grenade)
+            if ret is None:
+                if killer is not None and self.team is not killer.team and self != killer:
+                    killer.quickbuild_points += 1
+            return ret
         
-        def on_block_build_attempt(self, x, y, z):
-            if self.quickbuild_create:
-                if self.quickbuild_origin == None:
-                    self.quickbuild_origin = (x, y, z)
+        def on_line_build(self, points):
+            for x, y, z in points:
+                self.quickbuild_block_build(x, y, z)
+            return connection.on_line_build(self, points)
+        
+        def on_block_build(self, x, y, z):
+            self.quickbuild_block_build(x, y, z)
+            return connection.on_block_build(self, x, y, z)
+        
+        def quickbuild_block_build(self, x, y, z):
+            if self.quickbuild_mode == QB_RECORDING:
+                if self.quickbuild_record_origin == None:
+                    self.quickbuild_record_origin = (x, y, z)
                     self.quickbuild_recorded.append((0, 0, 0))
                 else:
-                    self.quickbuild_recorded.append((x-self.quickbuild_origin[0],
-                                                 self.quickbuild_origin[1]-y,
-                                                 self.quickbuild_origin[2]-z))
-            if self.quickbuild_enabled:
-                self.quickbuild_enabled = False
-                map = self.protocol.map
-                block_action.value = BUILD_BLOCK
-                block_action.player_id = self.player_id
+                    self.quickbuild_recorded.append((x-self.quickbuild_record_origin[0],
+                                                 self.quickbuild_record_origin[1]-y,
+                                                 self.quickbuild_record_origin[2]-z))
+            elif self.quickbuild_mode == QB_ENABLED:
+                self.quickbuild_mode = QB_DISABLED
                 color = self.color + (255,)
                 facing = self.get_direction()
-                structure = QUICKBUILD_STRUCTURES[self.quickbuild]
-                self.quickbuild = None
-                for block in structure:
-                    bx = block[0]
-                    by = block[1]
-                    bz = block[2]
-                    if facing == NORTH:
-                        bx, by = bx, -by
-                    elif facing == WEST:
-                        bx, by = -by, -bx
-                    elif facing == SOUTH:
-                        bx, by = -bx, by
-                    elif facing == EAST:
-                        bx, by = by, bx
-                    bx, by, bz = x+bx, y+by, z-bz
-                    if (bx < 0 or bx >= 512 or by < 0 or by >= 512 or bz < 0 or
-                        bz >= 62):
-                        continue
-                    if map.get_solid(bx, by, bz):
-                        continue
-                    block_action.x = bx
-                    block_action.y = by
-                    block_action.z = bz
-                    self.protocol.send_contained(block_action, save = True)
-                    map.set_point(bx, by, bz, color)
-            return connection.on_block_build_attempt(self, x, y, z)
+                structure = QUICKBUILD_STRUCTURES[self.quickbuid_index]
+                self.quickbuid_index = None
+                self.protocol.cbc_add(self.quickbuild_generator((x, y, z), structure, facing, color))
+        
+        def quickbuild_generator(self, origin, structure, facing, color):
+            x, y, z = origin
+            map = self.protocol.map
+            block_action = BlockAction()
+            block_action.value = BUILD_BLOCK
+            block_action.player_id = self.player_id
+            for bx, by, bz in structure:
+                if facing == NORTH:
+                    bx, by = bx, -by
+                elif facing == WEST:
+                    bx, by = -by, -bx
+                elif facing == SOUTH:
+                    bx, by = -bx, by
+                elif facing == EAST:
+                    bx, by = by, bx
+                bx, by, bz = x+bx, y+by, z-bz
+                if (bx < 0 or bx >= 512 or by < 0 or by >= 512 or bz < 0 or
+                    bz >= 62):
+                    continue
+                if map.get_solid(bx, by, bz):
+                    continue
+                block_action.x = bx
+                block_action.y = by
+                block_action.z = bz
+                self.protocol.send_contained(block_action, save = True)
+                map.set_point(bx, by, bz, color)
+            
     
     return protocol, BuildConnection
