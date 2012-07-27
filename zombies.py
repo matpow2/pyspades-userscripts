@@ -14,7 +14,7 @@ HUMAN = 1
 ZOMBIE = 2
 # ZOMBIE_HUMAN = HUMAN | ZOMBIE
 
-S_ZOMBIE_VERSION  = 'Zombies 1.0.0 RC6 by Dany0'
+S_ZOMBIE_VERSION  = 'Zombies 1.1.0 RC1 by Dany0, infogulch'
 S_ZOMBIE_HEALTH   = 'Zombie health is %i.'
 S_ZOMBIE_TELEPORT = 'Zombies teleport %i blocks high.'
 S_ZOMBIE_SPAWN    = 'Zombies spawn %i blocks high.'
@@ -31,8 +31,9 @@ def zhp(connection, value):
 @admin
 def ztel(connection, value):
     protocol = connection.protocol
-    protocol.ZOMBIE_TELEPORT = abs(int(value))
-    connection.send_chat(S_ZOMBIE_TELEPORT % value)
+    val = abs(int(value))
+    protocol.ZOMBIE_TELEPORT = val
+    connection.send_chat(S_ZOMBIE_TELEPORT % val)
 
 @admin
 def zspawnheight(connection, value):
@@ -44,7 +45,6 @@ def zspawnheight(connection, value):
     elif val < 10:
         protocol.ZOMBIE_SPAWN_HEIGHT = 0
         connection.send_chat('Disabling zombie spawning up in the air')
-    return value
 
 def zombiestat(connection):
     connection.send_chat(S_ZOMBIE_VERSION)
@@ -64,13 +64,12 @@ def apply_script(protocol, connection, config):
             self.ZOMBIE_SPAWN_HEIGHT = 0
     
     class ZombiesConnection(connection):
-        mode = 0 #must be a class instance variable to overload refill()
+        zombies_playermode = 0 #must be a class instance variable to overload connection.refill()
         
         def on_spawn(self, pos):
             if self.team is self.protocol.green_team:
                 # once spawned, human-zombies turn back into zombies
-                self.mode = ZOMBIE
-                self.can_heal = False
+                self.zombies_playermode = ZOMBIE
                 self.health_message = False
                 self.quickbuild_allowed = False
                 self.clear_ammo()
@@ -85,8 +84,7 @@ def apply_script(protocol, connection, config):
                     loc = (player_location.x, player_location.y, player_location.z - self.protocol.ZOMBIE_SPAWN_HEIGHT)
                     self.set_location_safe(loc)
             else:
-                self.mode = HUMAN
-                self.can_heal = True
+                self.zombies_playermode = HUMAN
                 self.health_message = True
                 self.quickbuild_allowed = True
             return connection.on_spawn(self, pos)
@@ -100,29 +98,31 @@ def apply_script(protocol, connection, config):
             self.protocol.send_contained(grenade_packet)
         
         def on_line_build_attempt(self, points):
-            if self.mode == ZOMBIE:
+            if self.zombies_playermode == ZOMBIE:
                 return False
             return connection.on_line_build_attempt(points)
         
         def on_block_build_attempt(self, x, y, z):
-            if self.mode == ZOMBIE:
+            if self.zombies_playermode == ZOMBIE:
                 return False
             return connection.on_block_build_attempt(self, x, y, z)
         
         def on_block_destroy(self, x, y, z, value):
-            if (self.mode == ZOMBIE and value == DESTROY_BLOCK and self.tool == SPADE_TOOL):
+            if (self.zombies_playermode == ZOMBIE and value == DESTROY_BLOCK and self.tool == SPADE_TOOL):
                     map = self.protocol.map
                     ztel = self.protocol.ZOMBIE_TELEPORT
-                    if (not map.get_solid(x, y, z-ztel+1) and not map.get_solid(x, y, z-ztel+2) and not map.get_solid(x, y, z-ztel+3)): 
-                        player_location = self.world_object.position
+                    player_location = self.world_object.position
+                    px, py, pz = player_location.x, player_location.y, player_location.z
+                    if (not map.get_solid(px, py, pz-ztel+1)
+                    and not map.get_solid(px, py, pz-ztel+2)
+                    and not map.get_solid(px, py, pz-ztel+3)):
                         self.create_explosion_effect(player_location)
-                        loc = (player_location.x, player_location.y, player_location.z-ztel)
-                        self.set_location(loc)
+                        self.set_location((px, py, pz - ztel))
             return connection.on_block_destroy(self, x, y, z, value)
         
         def on_flag_capture(self):
             if self.team is self.protocol.green_team:
-                self.mode = HUMAN
+                self.zombies_playermode = HUMAN
                 self.refill()
                 self.send_chat('YOU ARE HUMAN NOW RAWR GO SHOOT EM')
                 self.protocol.send_chat('%s has become a human-zombie and can use weapons!' % self.name)
@@ -136,7 +136,7 @@ def apply_script(protocol, connection, config):
             return connection.on_flag_take(self)
         
         def on_grenade(self, time_left):
-            if self.mode == ZOMBIE:
+            if self.zombies_playermode == ZOMBIE:
                 self.send_chat("Zombie! You fool! You forgot to unlock the pin! It's useless now!")
                 return False
             return connection.on_grenade(self, time_left)
@@ -152,37 +152,37 @@ def apply_script(protocol, connection, config):
             dist = floor(distance_3d(player_location, other_player_location))
             damagemulti = (sin(dist/80))+1
             new_hit = hit_amount * damagemulti
-            if hit_player.mode == ZOMBIE and self.weapon == SMG_WEAPON:
+            if self is hit_player:
+                if type == FALL_KILL:
+                    return False
+            elif hit_player.zombies_playermode == ZOMBIE and self.weapon == SMG_WEAPON:
                    new_hit = (new_hit/(self.protocol.ZOMBIE_HP/100))
-                   if hit_player != self:
-                       if new_hit >=25:
-                           self.create_explosion_effect(hit_player.world_object.position)
-                           self.send_chat("!!!HOLY SHIT UBER DAMAGE!!!")
-            if hit_player.mode == ZOMBIE and self.weapon != SMG_WEAPON:
+                   if new_hit >=25:
+                       self.create_explosion_effect(hit_player.world_object.position)
+                       self.send_chat("!!!HOLY SHIT UBER DAMAGE!!!")
+            elif hit_player.zombies_playermode == ZOMBIE and self.weapon != SMG_WEAPON:
                    if self.weapon == SHOTGUN_WEAPON:
                        new_hit = new_hit/(self.protocol.ZOMBIE_HP/100)/8
                    else:
                        new_hit = new_hit/(self.protocol.ZOMBIE_HP/100)
-                   if hit_player != self:
-                       if new_hit >=25:
-                           self.create_explosion_effect(hit_player.world_object.position)
-                           self.send_chat("!!!HOLY SHIT UBER DAMAGE!!!")
-            if self.mode == ZOMBIE and self.tool == WEAPON_TOOL:
+                   if new_hit >=25:
+                       self.create_explosion_effect(hit_player.world_object.position)
+                       self.send_chat("!!!HOLY SHIT UBER DAMAGE!!!")
+            elif self.zombies_playermode == ZOMBIE and type != MELEE_KILL:
                 return False #this should never happen, but just in case
-            if (self.mode == HUMAN and self.tool == SPADE_TOOL and 
-                     self.team == hit_player.team and self.can_heal == True):
+            elif (self.team is self.protocol.blue_team and self.team == hit_player.team and 
+                     type == MELEE_KILL):
                    if hit_player.hp >= 100:
                        if self.health_message == True:
                            self.health_message = False
                            self.send_chat(hit_player.name + ' is at full health.')
                    elif hit_player.hp > 0:
-                       self.can_heal = False
                        hit_player.set_hp(hit_player.hp + HEAL_RATE)
             return new_hit
         
         def on_kill(self, killer, type, grenade):
             if killer != None and killer != self:
-                if killer.mode == HUMAN:
+                if killer.zombies_playermode == HUMAN:
                     killer.refill()
                     killer.send_chat('You have been refilled!')
                 else:
@@ -201,7 +201,7 @@ def apply_script(protocol, connection, config):
         
         def refill(self, local = False):
             connection.refill(self, local)
-            if self.mode == ZOMBIE:
+            if self.zombies_playermode == ZOMBIE:
                 self.clear_ammo()
         
         def on_login(self, name):
