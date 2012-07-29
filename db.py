@@ -75,7 +75,7 @@ def apply_script(protocol, connection, config):
     
     class ClearBoxMakerProtocol(protocol):
         def on_map_change(self, map):
-            for connection in self.connections:
+            for connection in self.clients:
                 connection.deboxing = 0
             protocol.on_map_change(self, map)
     

@@ -18,7 +18,7 @@ def df(connection):
 add(df)
 
 def apply_script(protocol, connection, config):
-    class clearfloorMakerConnection(connection):
+    class ClearFloorMakerConnection(connection):
         deflooring = 0
         clearfloor_x = 0
         clearfloor_y = 0
@@ -38,5 +38,11 @@ def apply_script(protocol, connection, config):
                 self.send_chat('Now break opposite corner block')
                 self.deflooring = 2
             return connection.on_block_removed(self, x, y, z)
-                
-    return protocol, clearfloorMakerConnection
+    
+    class ClearFloorMakerProtocol(protocol):
+        def on_map_change(self, map):
+            for connection in self.clients:
+                connection.deflooring = 0
+            protocol.on_map_change(self, map)
+    
+    return ClearFloorMakerProtocol, ClearFloorMakerConnection

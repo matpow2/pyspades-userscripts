@@ -33,7 +33,7 @@ def box(connection, filled = ""):
 add(box)
 
 def apply_script(protocol, connection, config):
-    class boxMakerConnection(connection):
+    class BoxMakerConnection(connection):
         boxing = 0
         boxing_filled = 0
         box_x = 0
@@ -118,8 +118,8 @@ def apply_script(protocol, connection, config):
     
     class BoxMakerProtocol(protocol):
         def on_map_change(self, map):
-            for connection in self.connections:
+            for connection in self.clients:
                 connection.boxing = 0
             protocol.on_map_change(self, map)
     
-    return BoxMakerProtocol, boxMakerConnection
+    return BoxMakerProtocol, BoxMakerConnection

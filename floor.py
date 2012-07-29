@@ -18,7 +18,7 @@ def floor(connection):
 add(floor)
 
 def apply_script(protocol, connection, config):
-    class floorMakerConnection(connection):
+    class FloorMakerConnection(connection):
         flooring = 0
         floor_x = 0
         floor_y = 0
@@ -37,5 +37,11 @@ def apply_script(protocol, connection, config):
                 self.send_chat('Now place opposite corner block')
                 self.flooring = 2
             return connection.on_block_build(self, x, y, z)
-
-    return protocol, floorMakerConnection
+    
+    class FloorMakerProtocol(protocol):
+        def on_map_change(self, map):
+            for connection in self.clients:
+                connection.flooring = 0
+            protocol.on_map_change(self, map)
+    
+    return FloorMakerProtocol, FloorMakerConnection
