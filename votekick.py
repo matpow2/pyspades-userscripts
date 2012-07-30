@@ -19,7 +19,7 @@
 
 from twisted.internet.reactor import seconds
 from scheduler import Scheduler
-from commands import name, add, get_player, join_arguments, InvalidPlayer
+from commands import name, add, get_player, join_arguments, InvalidPlayer, admin, alias
 
 REQUIRE_REASON = False
 
@@ -59,6 +59,11 @@ def start_votekick(connection, *args):
     if connection not in protocol.players:
         raise KeyError()
     player = connection
+    
+    if protocol.votekick_enabled == False:
+        return "Votekicking disabled"
+    if player.votekick_enabled == False:
+        return "You are not allowed to initiate a votekick."
     
     if not args:
         if protocol.votekick:
@@ -109,9 +114,24 @@ def vote_yes(connection):
     
     votekick.vote(player)
 
+@alias('tvk')
+@admin
+def togglevotekick(connection, *args):
+    protocol = connection.protocol
+    if len(args) == 0:
+        protocol.votekick_enabled = not protocol.votekick_enabled
+        return "Votekicking globally %s." % ['disabled', 'enabled'][protocol.votekick_enabled]
+    try:
+        player = get_player(protocol, '#' + args[0])
+    except InvalidPlayer:
+        player = get_player(protocol, args[0])
+    player.votekick_enabled = not player.votekick_enabled
+    return "Votekicking is %s for %s." % (['disabled', 'enabled'][player.votekick_enabled], player.name)
+
 add(start_votekick)
 add(cancel_votekick)
 add(vote_yes)
+add(togglevotekick)
 
 class Votekick(object):
     duration = 120.0 # 2 minutes
@@ -197,7 +217,7 @@ class Votekick(object):
             self.schedule.reset()
         self.schedule = None
         self.protocol.votekick = None
-    
+        
     def end(self, result):
         self.ended = True
         message = S_ENDED.format(victim = self.victim.name, result = result)
@@ -221,6 +241,7 @@ def apply_script(protocol, connection, config):
     
     class VotekickProtocol(protocol):
         votekick = None
+        votekick_enabled = True
         
         def get_required_votes(self):
             # votekicks are invalid if this returns <= 0
@@ -247,6 +268,7 @@ def apply_script(protocol, connection, config):
     
     class VotekickConnection(connection):
         last_votekick = None
+        votekick_enabled = True
         
         def on_disconnect(self):
             votekick = self.protocol.votekick
