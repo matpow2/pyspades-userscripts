@@ -3,8 +3,7 @@ from pyspades.collision import distance_3d_vector
 from commands import add, admin
 from map import Map
 from pyspades.constants import *
-from feature_server.scripts.cbc import *
-import commands
+from cbc import cbc
 
 @admin
 def db(connection):
@@ -17,11 +16,15 @@ def db(connection):
 add(db)
 
 def apply_script(protocol, connection, config):
+    cbc.set_protocol(protocol)
+    
     class ClearBoxMakerConnection(connection):
-        deboxing = 0
-        clearbox_x = 0
-        clearbox_y = 0
-        clearbox_z = 0
+        def __init__(self, *arg, **kw):
+            connection.__init__(self, *arg, **kw)
+            self.deboxing = 0
+            self.clearbox_x = 0
+            self.clearbox_y = 0
+            self.clearbox_z = 0
         
         def clear_box_solid_generator(self, x1, y1, z1, x2, y2, z2):
             block_action = BlockAction()
@@ -47,10 +50,13 @@ def apply_script(protocol, connection, config):
             if (x1 < 0 or x1 >= 512 or y1 < 0 or y1 >= 512 or z1 < 0 or z1 > 64 or
                 x2 < 0 or x2 >= 512 or y2 < 0 or y2 >= 512 or z2 < 0 or z2 > 64):
                 return 'Invalid coordinates'
-            self.protocol.cbc_add(self.clear_box_solid_generator(x1, y1, z1, x2, y2, z2))
+            cbc.add(self.clear_box_solid_generator(x1, y1, z1, x2, y2, z2))
         
         def clear_box(self, x1, y1, z1, x2, y2, z2):
             # clear each face separately, the rest will fall
+            z1, z2 = sorted((z1, z2)) # do the bottom face first
+            self.clear_box_solid(x1, y1, z2, x2, y2, z2)
+            
             self.clear_box_solid(x1, y1, z1, x1, y2, z2)
             self.clear_box_solid(x2, y1, z1, x2, y2, z2)
             
@@ -58,7 +64,6 @@ def apply_script(protocol, connection, config):
             self.clear_box_solid(x1, y2, z1, x2, y2, z2)
             
             self.clear_box_solid(x1, y1, z1, x2, y2, z1)
-            self.clear_box_solid(x1, y1, z2, x2, y2, z2)
         
         def on_block_removed(self, x, y, z):
             if self.deboxing == 2:

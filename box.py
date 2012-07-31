@@ -1,13 +1,9 @@
 from pyspades.contained import BlockLine, SetColor
-from pyspades.collision import distance_3d_vector
-from pyspades.common import make_color
 from pyspades.constants import *
 from commands import add, admin
 from itertools import product
 
-from feature_server.scripts.cbc import *
-
-# !! Dependent on script "cbc" being listed before this script
+from cbc import cbc
 
 # todo: to all box,floor,db,df: kill modes when switching maps
 
@@ -33,17 +29,20 @@ def box(connection, filled = ""):
 add(box)
 
 def apply_script(protocol, connection, config):
+    cbc.set_protocol(protocol)
+    
     class BoxMakerConnection(connection):
-        boxing = 0
-        boxing_filled = 0
-        box_x = 0
-        box_y = 0
-        box_z = 0
+        def __init__(self, *arg, **kw):
+            connection.__init__(self, *arg, **kw)
+            self.boxing = 0
+            self.boxing_filled = 0
+            self.box_x = 0
+            self.box_y = 0
+            self.box_z = 0
         
         def build_box_filled_generator(self, x1, y1, z1, x2, y2, z2, boxcolor):
             line = BlockLine()
             line.player_id = self.player_id
-            # line.value = BUILD_BLOCK
             
             protocol = self.protocol
             check_protected = hasattr(protocol, 'protected')
@@ -73,7 +72,7 @@ def apply_script(protocol, connection, config):
                 dist = abs(line.x1 - x) + abs(line.y1 - y) + abs(line.z1 - z)
                 if changed > 1 or dist >= MAX_LINE_BLOCKS:
                     protocol.send_contained(line)
-                    packets += 1
+                    packets += 2
                     line.x1 = x
                     line.y1 = y
                     line.z1 = z
@@ -90,7 +89,7 @@ def apply_script(protocol, connection, config):
             if (x1 < 0 or x1 >= 512 or y1 < 0 or y1 >= 512 or z1 < 0 or z1 > 64 or
                 x2 < 0 or x2 >= 512 or y2 < 0 or y2 >= 512 or z2 < 0 or z2 > 64):
                 return 'Invalid coordinates'
-            self.protocol.cbc_add(self.build_box_filled_generator(x1, y1, z1, x2, y2, z2, boxcolor))
+            cbc.add(self.build_box_filled_generator(x1, y1, z1, x2, y2, z2, boxcolor))
         
         def build_box(self, x1, y1, z1, x2, y2, z2, boxcolor):
             self.build_box_filled(x1, y1, z1, x1, y2, z2, boxcolor)
