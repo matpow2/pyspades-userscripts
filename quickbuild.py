@@ -2,6 +2,7 @@ from commands import add, admin
 from math import floor, atan2
 from pyspades.constants import *
 from pyspades.contained import BlockAction
+from cbc import cbc
 
 QUICKBUILD_WALL = ((0, 0, 0), (-1, 0, 0), (-1, 0, 1), (-2, 0, 0), (-2, 0, 1), 
                    (-3, 0, 0), (-3, 0, 1), (0, 0, 1), (1, 0, 0), (1, 0, 1),
@@ -213,6 +214,8 @@ add(qbundo)
 QB_DISABLED, QB_ENABLED, QB_RECORDING = xrange(3)
 
 def apply_script(protocol, connection, config):
+    cbc.set_protocol(protocol)
+    
     class BuildConnection(connection):
         def get_direction(self):
             orientation = self.world_object.orientation
@@ -266,7 +269,7 @@ def apply_script(protocol, connection, config):
                 facing = self.get_direction()
                 structure = QUICKBUILD_STRUCTURES[self.quickbuid_index]
                 self.quickbuid_index = None
-                self.protocol.cbc_add(self.quickbuild_generator((x, y, z), structure, facing, color))
+                cbc.add(self.quickbuild_generator((x, y, z), structure, facing, color))
         
         def quickbuild_generator(self, origin, structure, facing, color):
             x, y, z = origin
@@ -295,5 +298,4 @@ def apply_script(protocol, connection, config):
                 self.protocol.send_contained(block_action, save = True)
                 map.set_point(bx, by, bz, color)
             
-    
     return protocol, BuildConnection
