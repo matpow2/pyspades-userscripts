@@ -3,7 +3,7 @@ from pyspades.collision import distance_3d_vector
 from commands import add, admin
 from map import Map
 from pyspades.constants import *
-from cbc import cbc
+import cbc
 
 @admin
 def db(connection):

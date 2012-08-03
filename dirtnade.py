@@ -7,7 +7,7 @@ Maintainer: hompy
 from pyspades.server import block_action
 from pyspades.constants import *
 
-from cbc import cbc
+import cbc
 
 DIRTNADE_BLOCKS = 19
 

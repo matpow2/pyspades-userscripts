@@ -3,7 +3,7 @@ from pyspades.constants import *
 from commands import add, admin
 from itertools import product
 
-from cbc import cbc
+import cbc
 
 # todo: to all box,floor,db,df: kill modes when switching maps
 
