@@ -2,7 +2,7 @@ from commands import add, admin, alias
 from math import floor, atan2, pi
 from pyspades.constants import *
 from pyspades.contained import BlockAction, SetColor
-from cbc import cbc
+import cbc
 import collections
 import itertools
 
