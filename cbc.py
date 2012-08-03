@@ -32,7 +32,7 @@ import time
 import random
 
 MAX_UNIQUE_PACKETS = 30 # per 'cycle', each block op is at least 1
-# MAX_PACKETS = 300     # per 'cycle' cap for (unique packets * players)
+MAX_PACKETS = 300       # per 'cycle' cap for (unique packets * players)
 MAX_TIME = 0.03
 TIME_BETWEEN_CYCLES = 0.06
 
@@ -89,14 +89,14 @@ def _cycle():
             for handle, info in _generators.iteritems():
                 if sent_unique > MAX_UNIQUE_PACKETS:
                     return
-                # if sent_total > MAX_PACKETS:
-                    # return
+                if sent_total > MAX_PACKETS:
+                    return
                 if time.time() - cycle_time > MAX_TIME:
                     return
                 current_handle = handle
                 sent, progress = info.generator.next()
                 sent_unique += sent
-                # sent_total  += sent * len(_protocol.connections) #can't get the property anymore
+                sent_total  += sent * len(_protocol.players)
                 if (time.time() - info.last_update > info.update_interval):
                     info.last_update = time.time()
                     info.progress = progress
@@ -117,23 +117,38 @@ def set_protocol(protocol):
     global _running, _generators, _protocol, _call
     # manually override these functions instead of inhertiting
     # allows this script to be completely separate, and not included in config.txt scripts
-    if _protocol is None and not protocol is None:
-        _protocol = protocol
-        
-        #save the current ones
-        saved_on_map_change = protocol.on_map_change
-        saved_on_map_leave  = protocol.on_map_leave
-        
-        def on_map_change(self, map):
-            for handle in _generators.keys():
-                cancel(handle)
-            saved_on_map_change(self, map)
-        
-        def on_map_leave(self):
-            for handle in _generators.keys():
-                cancel(handle)
-            saved_on_map_leave(self)
-        
-        #overwrite them
-        protocol.on_map_change = on_map_change
-        protocol.on_map_leave  = on_map_leave
+    # slightly more work for script authors, slightly less work for server hosts
+    if set_protocol.has_run:
+        return
+    
+    set_protocol.has_run = True
+    
+    #save the current ones
+    saved_on_map_change = protocol.on_map_change
+    saved_on_map_leave  = protocol.on_map_leave
+    
+    def on_map_change(self, map):
+        global _protocol
+        if _protocol is None:
+            _protocol = self
+        for handle in _generators.keys():
+            cancel(handle)
+        saved_on_map_change(self, map)
+    
+    def on_map_leave(self):
+        global _protocol
+        if _protocol is None:
+            _protocol = self
+        for handle in _generators.keys():
+            cancel(handle)
+        saved_on_map_leave(self)
+    
+    #overwrite them
+    protocol.on_map_change = on_map_change
+    protocol.on_map_leave  = on_map_leave
+
+set_protocol.has_run = False
+
+# little snippet to prevent people from including this script in the config.txt anymore
+def apply_script(*a):
+    raise NotImplementedError('"cbc" should not be included in config.txt!')
