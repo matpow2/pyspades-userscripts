@@ -61,6 +61,7 @@ def apply_script(protocol, connection, config):
             line.x2 = line.x1
             line.y2 = line.y1
             line.z2 = line.z1
+            protocol.map.set_point(line.x1, line.y1, line.z1, boxcolor)
             
             for x, y, z in prod:
                 packets = 0
