@@ -1,13 +1,16 @@
-from commands import add, admin
-from math import floor, atan2
+from commands import add, admin, alias
+from math import floor, atan2, pi
 from pyspades.constants import *
-from pyspades.contained import BlockAction
+from pyspades.contained import BlockAction, SetColor
 from cbc import cbc
+import collections
+import itertools
 
-QUICKBUILD_WALL = ((0, 0, 0), (-1, 0, 0), (-1, 0, 1), (-2, 0, 0), (-2, 0, 1), 
-                   (-3, 0, 0), (-3, 0, 1), (0, 0, 1), (1, 0, 0), (1, 0, 1),
-                   (2, 0, 0), (2, 0, 1), (3, 0, 0), (3, 0, 1), (-3, -1, 0), (-3, -1, 1), (-3, -2, 0),
-                   (-3, -2, 1),(3, -1, 0), (3, -1, 1), (3, -2, 0), (3, -2, 1))
+QUICKBUILD_WALL = ((0, 0, 0), (0, 1, 0), (0, 1, 1), (0, 2, 0), (0, 2, 1)
+                 , (0, 3, 0), (0, 3, 1), (0, 0, 1), (0, -1, 0), (0, -1, 1)
+                 , (0, -2, 0), (0, -2, 1), (0, -3, 0), (0, -3, 1), (-1, 3, 0)
+                 , (-1, 3, 1), (-2, 3, 0), (-2, 3, 1), (-1, -3, 0), (-1, -3, 1)
+                 , (-2, -3, 0), (-2, -3, 1), (1, 7, 0))
 QUICKBUILD_BUNKER = ((0, 0, 0), (-1, 0, 0), (-1, 0, 1), (-1, 0, 2), 
                      (0, 0, 2), (1, 0, 0), (1, 0, 1), (1, 0, 2), 
                      (2, 0, 0), (2, 0, 2), (-2, 0, 2), (-2, 0, 0), 
@@ -134,54 +137,109 @@ QUICKBUILD_DESCRIPTION = ('wall', 'bunker', 'tent', 'mobilefort','bigwall','defe
 
 QUICKBUILD_COST = (0, 1, 0, 1, 2, 3, 4, 5)
 
-# Don't touch these values
-EAST = 0
-SOUTH = 1
-WEST = 2
-NORTH = 3
-UPDATE_RATE = 1.0
+QB_DIR = './qb'
+QB_EXT = 'avx'
+
+EAST, SOUTH, WEST, NORTH = xrange(4)
+
+def shift_origin(list, new_origin):
+    # new_origin is relative to the current origin.
+    # the old origin is now the inverse of new_origin
+    shift = (-n for n in new_origin)
+    return [map(sum, zip(xyz, shift)) for xyz in list]
+
+def rotate_all(fm, to, list):
+    # list is a list of tuples
+    # assumes y increases to the south
+    amt = (to - fm) % 4
+    lamb = lambda t: t
+    if amt == 1:
+        lamb = lambda t: (-t[1],  t[0]) + t[2:]
+    elif amt == 2:
+        lamb = lambda t: (-t[0], -t[1]) + t[2:]
+    elif amt == 3:
+        lamb = lambda t: ( t[1], -t[0]) + t[2:]
+    return itertools.imap(lamb, list)
+
+def rotate_all_dict(fm, to, d):
+    return itertools.izip(rotate_all(fm, to, d.iterkeys()), d.itervalues())
+
+def rotate_all_dict_keys(fm, to, d):
+    return rotate_all(fm, to, d.iterkeys())
+
+def rotate(fm, to, *tpl):
+    return tuple(rotate_all(fm, to, [tpl]))[0]
 
 # Use these commands to create quickbuild structures.
 @admin
-def qbrecord(connection):
-    if connection.quickbuild_mode == QB_RECORDING:
-        connection.quickbuild_mode = QB_DISABLED
-        qbclear(connection)
+def qbrecord(connection, colored = ''):
+    if connection.qb_recording:
+        connection.qb_recording = 0
         connection.send_chat('You are no longer recording.')
     else:
-        connection.quickbuild_mode = QB_RECORDING
-        connection.send_chat('You are now recording.')
+        connection.qb_recording = (colored.lower() == 'colored') + 1
+        connection.send_chat('You are now recording. First block marks the origin.')
+
+@admin
+def qbsave(connection, name):
+    if not name.isalnum():
+        connection.send_chat('Invalid save name. Only alphanumeric characters allowed.')
+        return
+    recorded = shift_origin(connection.qb_recorded, map(min, izip(*connection.qb_recorded)))
+    # import avx
 
 @admin
 def qbprint(connection):
-    print connection.quickbuild_recorded
-    connection.send_chat('Printed quickbuild data.')
+    print connection.qb_recorded
+
+@admin
+def qbrotate(connection, amount):
+    amount = int(amount)
+    if amount in (NORTH, SOUTH, EAST, WEST):
+        connection.qb_recorded = OrderedDict(rotate_all(EAST, amount, connection.qb_recorded))
+
+@admin
+def qbshiftorigin(connection):
+    pass
 
 @admin
 def qbclear(connection):
-    connection.quickbuild_recorded = []
-    connection.quickbuild_record_origin = None
+    connection.qb_recorded.clear()
+    connection.qb_record_origin = None
+    connection.send_chat('Quickbuild recorded blocks cleared.')
 
 @admin
 def qbundo(connection):
-    if len(connection.quickbuild_recorded):
-        connection.quickbuild_recorded.pop()
+    if len(connection.qb_recorded):
+        connection.qb_recorded.popitem()
+        connection.send_chat('Last recorded item removed.')
 
+@alias('br')
+@admin
+def buildrecorded(connection):
+    connection.qb_recording = 0
+    connection.qb_build_recorded = True
+    connection.qb_building = True
+    connection.send_chat('The next block you place will build the recorded structure.')
+
+# Build a structure.
+@alias('b')
 def build(connection, structure = None):
     if not connection.quickbuild_allowed:
         connection.send_chat('You are not allowed to build')
         return
     if structure == None:
-        connection.quickbuild_mode = QB_DISABLED
+        connection.qb_building = False
         connection.quickbuild_index = None
         for i in xrange(len(QUICKBUILD_STRUCTURES)):
             connection.send_chat('%i: Build a %s. Requires %i kills.' 
                 % (i, QUICKBUILD_DESCRIPTION[i], QUICKBUILD_COST[i]))
         connection.send_chat('/build BUILDNUMBER')
     else:
-        if connection.quickbuid_index != None:
-            connection.send_chat("You're already building #%i: %s." 
-                % (connection.quickbuid_index, QUICKBUILD_DESCRIPTION[connection.quickbuid_index]))
+        if connection.qb_index != None:
+            connection.qb_building = False
+            connection.qb_build_recorded = False
+            connection.send_chat("No longer building.")
             return
         try:
             structure = int(structure)
@@ -191,58 +249,55 @@ def build(connection, structure = None):
             connection.send_chat('The structure that you entered is invalid.')
             return
         cost = QUICKBUILD_COST[structure]
-        if connection.quickbuild_points >= cost:
-            connection.quickbuild_points -= cost
-            connection.quickbuid_index = structure
+        if connection.qb_points >= cost or connection.god:
+            connection.qb_points -= cost
+            connection.qb_index = structure
             connection.send_chat('The next block you place will build a %s.' 
                 % QUICKBUILD_DESCRIPTION[structure])
-            connection.quickbuild_mode = QB_ENABLED
+            connection.qb_building = True
         else:
             connection.send_chat('You need %i more kills if you want to build #%i: %s.' 
-                % (cost-connection.quickbuild_points, structure, QUICKBUILD_DESCRIPTION[structure]))
-
-def b(connection, structure = None):
-    build(connection, structure)
+                % (cost-connection.qb_points, structure, QUICKBUILD_DESCRIPTION[structure]))
 
 add(build)
-add(b)
+
 add(qbrecord)
-add(qbprint)
+add(qbsave)
 add(qbclear)
 add(qbundo)
 
-QB_DISABLED, QB_ENABLED, QB_RECORDING = xrange(3)
+add(qbprint)
+add(qbrotate)
+add(buildrecorded)
 
 def apply_script(protocol, connection, config):
     cbc.set_protocol(protocol)
     
+    # load config
+    
     class BuildConnection(connection):
+        def __init__(self, *arg, **kw):
+            connection.__init__(self, *arg, **kw)
+            self.quickbuild_allowed = True
+            self.qb_index = None
+            self.qb_points = 0
+            self.qb_building = False
+            
+            self.qb_build_recorded = False
+            self.qb_recording = 0
+            self.qb_record_origin = None
+            self.qb_record_dir = None
+            self.qb_recorded = collections.OrderedDict()
+        
         def get_direction(self):
             orientation = self.world_object.orientation
-            angle = atan2(orientation.y, orientation.x)
-            if angle < 0:
-                angle += 6.283185307179586476925286766559
-            # Convert to units of quadrents
-            angle *= 0.63661977236758134307553505349006
-            angle = round(angle)
-            if angle == 4:
-                angle = 0
-            return angle
-        
-        def on_join(self):
-            self.quickbuild_allowed = True
-            self.quickbuid_index = None
-            self.quickbuild_points = 0
-            self.quickbuild_mode = QB_DISABLED
-            self.quickbuild_record_origin = None
-            self.quickbuild_recorded = []
-            return connection.on_join(self)
+            return int(round(atan2(orientation.y, orientation.x) / pi * 2) % 4)
         
         def on_kill(self, killer, type, grenade):
             ret = connection.on_kill(self, killer, type, grenade)
             if ret is None:
                 if killer is not None and self.team is not killer.team and self != killer:
-                    killer.quickbuild_points += 1
+                    killer.qb_points += 1
             return ret
         
         def on_line_build(self, points):
@@ -254,48 +309,53 @@ def apply_script(protocol, connection, config):
             self.quickbuild_block_build(x, y, z)
             return connection.on_block_build(self, x, y, z)
         
-        def quickbuild_block_build(self, x, y, z):
-            if self.quickbuild_mode == QB_RECORDING:
-                if self.quickbuild_record_origin == None:
-                    self.quickbuild_record_origin = (x, y, z)
-                    self.quickbuild_recorded.append((0, 0, 0))
-                else:
-                    self.quickbuild_recorded.append((x-self.quickbuild_record_origin[0],
-                                                 self.quickbuild_record_origin[1]-y,
-                                                 self.quickbuild_record_origin[2]-z))
-            elif self.quickbuild_mode == QB_ENABLED:
-                self.quickbuild_mode = QB_DISABLED
+        def on_block_build_attempt(self, x, y, z):
+            if self.qb_building:
+                self.qb_building = False
                 color = self.color + (255,)
-                facing = self.get_direction()
-                structure = QUICKBUILD_STRUCTURES[self.quickbuid_index]
-                self.quickbuid_index = None
-                cbc.add(self.quickbuild_generator((x, y, z), structure, facing, color))
+                if self.qb_build_recorded:
+                    structure = rotate_all_dict_keys(EAST, self.get_direction(), self.qb_recorded)
+                else:
+                    structure = QUICKBUILD_STRUCTURES[self.qb_index]
+                    structure = rotate_all(EAST, self.get_direction(), structure)
+                    self.qb_index = None
+                # structure is an iterator
+                self.send_chat('Building structure.')
+                cbc.add(self.quickbuild_generator((x, y, z), structure, color))
+                return False
+            elif self.qb_recording and self.qb_record_origin is None:
+                self.qb_record_origin = (x, y, z)
+                self.qb_record_dir = self.get_direction()
+                return False
+            return connection.on_block_build_attempt(self, x, y, z)
         
-        def quickbuild_generator(self, origin, structure, facing, color):
-            x, y, z = origin
+        def quickbuild_block_build(self, x, y, z):
+            if self.qb_recording:
+                if self.qb_record_origin is None:
+                    self.qb_record_origin = (x, y, z)
+                    self.qb_record_dir = self.get_direction()
+                xyz = (x-self.qb_record_origin[0],
+                       y-self.qb_record_origin[1],
+                         self.qb_record_origin[2]-z)
+                xyz = rotate(self.qb_record_dir, EAST, *xyz)
+                self.qb_recorded[xyz] = self.color if self.qb_recording == 2 else None
+        
+        def quickbuild_generator(self, origin, structure, default_color):
+            xo, yo, zo = origin
             map = self.protocol.map
             block_action = BlockAction()
             block_action.value = BUILD_BLOCK
             block_action.player_id = self.player_id
-            for bx, by, bz in structure:
-                if facing == NORTH:
-                    bx, by = bx, -by
-                elif facing == WEST:
-                    bx, by = -by, -bx
-                elif facing == SOUTH:
-                    bx, by = -bx, by
-                elif facing == EAST:
-                    bx, by = by, bx
-                bx, by, bz = x+bx, y+by, z-bz
-                if (bx < 0 or bx >= 512 or by < 0 or by >= 512 or bz < 0 or
-                    bz >= 62):
+            for x, y, z in structure:
+                x, y, z = x + xo, y + yo, z + zo
+                if (x < 0 or x >= 512 or y < 0 or y >= 512 or z < 0 or z >= 62):
                     continue
-                if map.get_solid(bx, by, bz):
+                if map.get_solid(x, y, z):
                     continue
-                block_action.x = bx
-                block_action.y = by
-                block_action.z = bz
+                self.on_block_build(x, y, z)
+                block_action.x, block_action.y, block_action.z = x, y, z
                 self.protocol.send_contained(block_action, save = True)
-                map.set_point(bx, by, bz, color)
-            
+                map.set_point(x, y, z, default_color)
+                yield 1, 0
+    
     return protocol, BuildConnection
