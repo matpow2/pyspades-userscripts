@@ -4,8 +4,9 @@ from commands import add, admin
 from map import Map
 from pyspades.constants import *
 import commands
+import box
 
-# requires box.py
+# requires box.py script in the /scripts folder
 
 @admin
 def floor(connection):
@@ -29,7 +30,10 @@ def apply_script(protocol, connection, config):
                 self.flooring = 0
                 if self.floor_z != z:
                     self.send_chat('Surface is uneven! Using first height.')
-                self.build_box_filled(self.floor_x, self.floor_y, self.floor_z, x, y, self.floor_z, self.color+(255,))
+                box.build_filled(self.protocol
+                    , self.floor_x, self.floor_y, self.floor_z
+                    , x, y, self.floor_z
+                    , self.color, self.god, self.god_build)
             if self.flooring == 1:
                 self.floor_x = x
                 self.floor_y = y

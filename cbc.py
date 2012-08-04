@@ -58,6 +58,20 @@ _call = None
 
 UPDATE, CANCELLED, FINISHED = range(3)
 
+#note: client crashes when this goes over ~50
+class ServerPlayer(object):
+    server_players = set()
+    
+    def __init__(self):
+        id = 32
+        while id in ServerPlayer.server_players:
+            id += 1
+        self.player_id = id
+        ServerPlayer.server_players.add(id)
+    
+    def __del__(self):
+        ServerPlayer.server_players.discard(self.player_id)
+
 def add(generator, update_time = 10.0, callback = None, *args):
     global _running, _generators, _protocol, _call
     if _protocol is None:

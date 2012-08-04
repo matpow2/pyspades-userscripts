@@ -4,8 +4,10 @@ from commands import add, admin
 from map import Map
 from pyspades.constants import *
 import commands
+import db
 
-# requires db.py
+# requires db.py in the /scripts directory
+# db not required to be in config.txt
 
 @admin
 def df(connection):
@@ -29,7 +31,7 @@ def apply_script(protocol, connection, config):
                 self.deflooring = 0
                 if self.clearfloor_z != z:
                     self.send_chat('Surface is uneven! Using first height.')
-                self.clear_box_solid(self.clearfloor_x, self.clearfloor_y, self.clearfloor_z, x, y, self.clearfloor_z)
+                db.clear_solid(self.protocol, self.clearfloor_x, self.clearfloor_y, self.clearfloor_z, x, y, self.clearfloor_z, self.god)
                 self.send_chat('Floor destroyed!')
             if self.deflooring == 1:
                 self.clearfloor_x = x
