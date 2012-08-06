@@ -9,8 +9,7 @@ from itertools import izip, imap, chain, ifilter, product, repeat
 from collections import OrderedDict
 from struct import pack, unpack, calcsize
 
-# first crack at a self-contained pure-python "reference" implementation of generic AVX loader/saver
-# everything subject to change
+# this module is an attempt at a self-contained pure-python "reference" implementation of a generic AVX loader/saver
 
 # Note: This is probably a better implementation of bitarrays: http://pypi.python.org/pypi/bitarray#downloads
 
@@ -233,8 +232,9 @@ class AVX(BitArrayND):
         
         fileobj.write(self.tostring(self.pad_bytes))
         
-        for xyz, color in sorted(self.colors):
-            fileobj.write(pack('BBB', *color))
+        if self.has_colors:
+            for xyz in sorted(self.colors):
+                fileobj.write(pack('BBB', *self.colors[xyz]))
     
     def props(n):
         def get(self): return self.shape[n]
@@ -283,5 +283,7 @@ class AVX(BitArrayND):
     del fixcolors
     
     def issurface(self, coords):
-        return self.get(coords) and not all(imap(self.get, self.neighbors(coords)))
+        return self.get(coords) and (
+            any(a == 0 or a == n for a,n in izip(coords, self.shape)) # on the edge of the map
+            or not all(imap(self.get, self.neighbors(coords)))) # one of it neighbors is missing
 #
