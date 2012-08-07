@@ -117,20 +117,24 @@ def qbshiftorigin(connection):
 def qbclear(connection):
     connection.qb_recorded.clear()
     connection.qb_record_origin = None
+    connection.qb_recording = 0
     connection.send_chat('Quickbuild recorded blocks cleared.')
 
 @admin
-def qbundo(connection):
-    if len(connection.qb_recorded):
+def qbundo(connection, qty = 1):
+    n = 0
+    for n in xrange(abs(int(qty))):
+        if len(connection.qb_recorded) == 0:
+            break
         connection.qb_recorded.popitem()
-        connection.send_chat('Last recorded item removed.')
+    connection.send_chat('Removed the last %i recorded blocks' % (n-1))
 
 @alias('br')
 @admin
 def buildrecorded(connection):
     connection.qb_recording = 0
     connection.qb_building = 2
-    connection.qb_file = None
+    connection.qb_info = None
     connection.send_chat('The next block you place will build the recorded structure.')
 
 # Build a structure.
@@ -142,7 +146,7 @@ def build(connection, structure = None):
     builds = connection.protocol.config.get('build', {})
     if structure is None:
         connection.qb_building = 0
-        connection.qb_file = None
+        connection.qb_info = None
         connection.send_chat('QuickBuild: Available structures. NAME(cost). /build NAME. You have %i points.' % connection.qb_points)
         sts = ''
         for name, info in builds.iteritems():
@@ -153,9 +157,9 @@ def build(connection, structure = None):
             sts += st
         connection.send_chat(sts[2:])
     else:
-        if connection.qb_file != None:
+        if connection.qb_info != None:
             connection.qb_building = 0
-            connection.qb_file = None
+            connection.qb_info = None
             connection.send_chat("No longer building.")
             return
         name = structure.lower()
@@ -165,8 +169,7 @@ def build(connection, structure = None):
         info = builds[name]
         cost = info.get('cost', 0)
         if connection.qb_points >= cost or connection.god:
-            connection.qb_points -= cost
-            connection.qb_file = QB_DIR + '/' + info['file']
+            connection.qb_info = info
             connection.send_chat('The next block you place will build a %s.' % info.get('description', name))
             connection.qb_building = 1
         else:
@@ -193,14 +196,14 @@ def apply_script(protocol, connection, config):
         def __init__(self, *arg, **kw):
             connection.__init__(self, *arg, **kw)
             self.quickbuild_allowed = True
-            self.qb_file = None
+            self.qb_info = None
             self.qb_points = 0
             self.qb_building = 0
             
             self.qb_recording = 0
             self.qb_record_origin = None
             self.qb_record_dir = None
-            self.qb_recorded = collections.OrderedDict()
+            self.qb_recorded = OrderedDict()
         
         def get_direction(self):
             orientation = self.world_object.orientation
@@ -237,8 +240,10 @@ def apply_script(protocol, connection, config):
                     structure = rotate_all(self.qb_recorded, EAST, self.get_direction())
                     color = DIRT_COLOR if self.qb_recording == 2 else self.color
                 else:
-                    vx = AVX.fromfile(self.qb_file)
-                    origin = json.load(open(self.qb_file + '.txt', 'r')).get('origin', (0,0,0))
+                    file = QB_DIR + '/' + self.qb_info['file']
+                    self.qb_points -= self.qb_info['cost']
+                    vx = AVX.fromfile(file)
+                    origin = json.load(open(file + '.txt', 'r')).get('origin', (0,0,0))
                     structure = vx.tosparsedict()
                     structure = shift_origin(structure, origin)
                     structure = rotate_all(structure, EAST, self.get_direction())
@@ -247,7 +252,7 @@ def apply_script(protocol, connection, config):
                 self.send_chat('Building structure.')
                 cbc.add(self.quickbuild_generator((x, y, z), structure, color))
                 self.qb_building = 0
-                self.qb_file = None
+                self.qb_info = None
                 return False
             elif self.qb_recording and self.qb_record_origin is None:
                 self.qb_record_origin = (x, y, z)
