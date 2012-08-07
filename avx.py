@@ -284,6 +284,6 @@ class AVX(BitArrayND):
     
     def issurface(self, coords):
         return self.get(coords) and (
-            any(a == 0 or a == n for a,n in izip(coords, self.shape)) # on the edge of the map
+            any(a == 0 or a == n-1 for a,n in izip(coords, self.shape)) # on the edge of the map
             or not all(imap(self.get, self.neighbors(coords)))) # one of it neighbors is missing
 #

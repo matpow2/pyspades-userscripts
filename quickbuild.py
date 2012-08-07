@@ -35,17 +35,17 @@ def shift_origin(dct, new_origin):
 
 def rotate_all(dct, fm, to):
     # dct is a dict (or 2-tuple iterator) of tuple, color
-    # returns a 2-tuple iterator
+    # returns a 2-tuple iterator that shifts the original dict about the origin (0,0,0)
     # assumes y increases to the south
     amt = (to - fm) % 4
     if amt == 0:
-        rot = lambda t: t[:2]
+        rot = lambda t: t
     elif amt == 1:
-        rot = lambda t: (-t[1],  t[0], t[2])
+        rot = lambda t: (-t[1],  t[0]) + t[2:]
     elif amt == 2:
-        rot = lambda t: (-t[0], -t[1], t[2])
+        rot = lambda t: (-t[0], -t[1]) + t[2:]
     elif amt == 3:
-        rot = lambda t: ( t[1], -t[0], t[2])
+        rot = lambda t: ( t[1], -t[0]) + t[2:]
     if isinstance(dct, dict):
         dct = dct.iteritems()
     for k,v in dct:
@@ -170,8 +170,8 @@ def build(connection, structure = None):
             connection.send_chat('The next block you place will build a %s.' % info.get('description', name))
             connection.qb_building = 1
         else:
-            connection.send_chat('You need %i more points if you want to build #%i: %s.' 
-                % (cost-connection.qb_points, structure, QUICKBUILD_DESCRIPTION[structure]))
+            connection.send_chat('You need %i more points if you want to build %s: %s.' 
+                % (cost-connection.qb_points, name, info.get('description', name)))
 
 add(build)
 add(buildrecorded)
@@ -273,17 +273,17 @@ def apply_script(protocol, connection, config):
             protocol.send_contained(set_color, save = True)
             
             for xyz, color in structure:
+                x, y, z = [a+b for a,b in zip(xyz, origin)]
+                if (x < 0 or x >= 512 or y < 0 or y >= 512 or z < 0 or z >= 62):
+                    continue
+                if map.get_solid(x, y, z):
+                    continue
                 color = color or default_color
                 if color != pcolor:
                     set_color.value = make_color(*color)
                     protocol.send_contained(set_color, save = True)
                     pcolor = color
                     yield 1, 0
-                x, y, z = (a+b for a,b in zip(xyz, origin))
-                if (x < 0 or x >= 512 or y < 0 or y >= 512 or z < 0 or z >= 62):
-                    continue
-                if map.get_solid(x, y, z):
-                    continue
                 self.on_block_build(x, y, z)
                 block_action.x, block_action.y, block_action.z = x, y, z
                 protocol.send_contained(block_action, save = True)
