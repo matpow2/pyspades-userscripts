@@ -5,17 +5,22 @@ Usage:
     # At the top of the file
     import cbc
     
-    #in your apply_script() function
+    # in your apply_script() function
+    
     apply_script(protocol, connection, config)
-        cbc.set_protocol(protocol)
+        protocol, connection = cbc.apply_script(protocol, connection, config)
     
     # start
     generator = self.create_generator_function()
-    handle = cbc.add(generator, update_interval, self.callback_function, *callback_args)
+    
+    handle = self.protocol.cbc_add(generator)
+    # or
+    handle = self.protocol.cbc_add(generator, update_interval, self.callback_function, *callback_args)
+    
     # update_interval is the time (in seconds) between calls to `self.callback_function`
     
     # stop
-    cbc.cancel(handle)
+    self.protocol.cbc_cancel(handle)
 
 Callback receives these args:
 
@@ -30,11 +35,6 @@ Author: infogulch
 from twisted.internet.task import LoopingCall
 import time
 import random
-
-MAX_UNIQUE_PACKETS = 30 # per 'cycle', each block op is at least 1
-MAX_PACKETS = 300       # per 'cycle' cap for (unique packets * players)
-MAX_TIME = 0.03
-TIME_BETWEEN_CYCLES = 0.06
 
 class _CbcInfo:
     generator = None
@@ -51,13 +51,6 @@ class _CbcInfo:
         self.callback = callback
         self.callback_args = callback_args
 
-_running = False
-_generators = {}
-_protocol = None
-_call = None
-
-UPDATE, CANCELLED, FINISHED = range(3)
-
 #note: client crashes when this goes over ~50
 class ServerPlayer(object):
     server_players = set()
@@ -72,97 +65,83 @@ class ServerPlayer(object):
     def __del__(self):
         ServerPlayer.server_players.discard(self.player_id)
 
-def add(generator, update_time = 10.0, callback = None, *args):
-    global _running, _generators, _protocol, _call
-    if _protocol is None:
-        raise ValueError()
-    info = _CbcInfo(generator, update_time, callback, args)
-    handle = max(_generators.keys() + [0]) + 1
-    _generators[handle] = info
-    if not _running:
-        _running = True
-        _call.start(TIME_BETWEEN_CYCLES, False)
-    #this handle lets you cancel in the middle later
-    return handle
+TIME_BETWEEN_CYCLES = 0.06
+MAX_UNIQUE_PACKETS = 30 # per 'cycle', each block op is at least 1
+MAX_PACKETS = 300       # per 'cycle' cap for (unique packets * players)
+MAX_TIME = 0.03         # max time each cycle takes
 
-def cancel(handle):
-    global _running, _generators, _protocol, _call
-    if _generators.has_key(handle):
-        info = _generators[handle]
-        if info.callback is not None:
-            info.callback(CANCELLED, info.progress, time.time() - info.start, *info.callback_args)
-        del _generators[handle]
-
-def _cycle():
-    global _running, _generators, _protocol, _call
-    sent_unique = sent_total = progress = 0
-    current_handle = None
-    cycle_time = time.time()
-    while len(_generators) > 0:
-        try:
-            for handle, info in _generators.iteritems():
-                if sent_unique > MAX_UNIQUE_PACKETS:
-                    return
-                if sent_total > MAX_PACKETS:
-                    return
-                if time.time() - cycle_time > MAX_TIME:
-                    return
-                current_handle = handle
-                sent, progress = info.generator.next()
-                sent_unique += sent
-                sent_total  += sent * len(_protocol.players)
-                if (time.time() - info.last_update > info.update_interval):
-                    info.last_update = time.time()
-                    info.progress = progress
-                    if not info.callback is None:
-                        info.callback(UPDATE, progress, time.time() - info.start, *info.callback_args)
-        except (StopIteration):
-            info = _generators[current_handle]
-            if not info.callback is None:
-                info.callback(FINISHED, progress, time.time() - info.start, *info.callback_args)
-            del _generators[current_handle]
-    if len(_generators) == 0:
-        _call.stop()
-        _running = False
-
-_call = LoopingCall(_cycle)
-
-def set_protocol(protocol):
-    global _running, _generators, _protocol, _call
-    # manually override these functions instead of inhertiting
-    # allows this script to be completely separate, and not included in config.txt scripts
-    # slightly more work for script authors, slightly less work for server hosts
-    if set_protocol.has_run:
-        return
+def apply_script(protocol, connection, config):
+    if hasattr(protocol, 'cbc_add'):
+        return protocol, connection
     
-    set_protocol.has_run = True
+    class CycleBlockCoiteratorProtocol(protocol):
+        CBC_UPDATE, CBC_CANCELLED, CBC_FINISHED = range(3)
+        
+        def __init__(self, *args, **kwargs):
+            protocol.__init__(self, *args, **kwargs)
+            
+            self._cbc_running = False
+            self._cbc_generators = {}
+            self._cbc_call = LoopingCall(self._cbc_cycle)
+        
+        def cbc_add(self, generator, update_time = 10.0, callback = None, *args):
+            info = _CbcInfo(generator, update_time, callback, args)
+            handle = max(self._cbc_generators.keys() + [0]) + 1
+            self._cbc_generators[handle] = info
+            if not self._cbc_running:
+                self._cbc_running = True
+                self._cbc_call.start(TIME_BETWEEN_CYCLES, False)
+            #this handle lets you cancel in the middle later
+            return handle
+        
+        def cbc_cancel(self, handle):
+            if self._cbc_generators.has_key(handle):
+                info = self._cbc_generators[handle]
+                if info.callback is not None:
+                    info.callback(CANCELLED, info.progress, time.time() - info.start, *info.callback_args)
+                del self._cbc_generators[handle]
+        
+        def _cbc_cycle(self):
+            sent_unique = sent_total = progress = 0
+            current_handle = None
+            cycle_time = time.time()
+            while self._cbc_generators:
+                try:
+                    for handle, info in self._cbc_generators.iteritems():
+                        if sent_unique > MAX_UNIQUE_PACKETS:
+                            return
+                        if sent_total > MAX_PACKETS:
+                            return
+                        if time.time() - cycle_time > MAX_TIME:
+                            return
+                        current_handle = handle
+                        sent, progress = info.generator.next()
+                        sent_unique += sent
+                        sent_total  += sent * len(self.players)
+                        if (time.time() - info.last_update > info.update_interval):
+                            info.last_update = time.time()
+                            info.progress = progress
+                            if not info.callback is None:
+                                info.callback(self.CBC_UPDATE, progress, time.time() - info.start, *info.callback_args)
+                except StopIteration:
+                    info = self._cbc_generators[current_handle]
+                    if info.callback is not None:
+                        info.callback(self.CBC_FINISHED, progress, time.time() - info.start, *info.callback_args)
+                    del self._cbc_generators[current_handle]
+            else:
+                self._cbc_call.stop()
+                self._cbc_running = False
+        
+        def on_map_change(self, map):
+            if hasattr(self, '_cbc_generators'):
+                for handle in self._cbc_generators.keys():
+                    self.cbc_cancel(handle)
+            protocol.on_map_change(self, map)
+        
+        def on_map_leave(self):
+            if hasattr(self, '_cbc_generators'):
+                for handle in self._cbc_generators.keys():
+                    self.cbc_cancel(handle)
+            protocol.on_map_leave(self)
     
-    #save the current ones
-    saved_on_map_change = protocol.on_map_change
-    saved_on_map_leave  = protocol.on_map_leave
-    
-    def on_map_change(self, map):
-        global _protocol
-        if _protocol is None:
-            _protocol = self
-        for handle in _generators.keys():
-            cancel(handle)
-        saved_on_map_change(self, map)
-    
-    def on_map_leave(self):
-        global _protocol
-        if _protocol is None:
-            _protocol = self
-        for handle in _generators.keys():
-            cancel(handle)
-        saved_on_map_leave(self)
-    
-    #overwrite them
-    protocol.on_map_change = on_map_change
-    protocol.on_map_leave  = on_map_leave
-
-set_protocol.has_run = False
-
-# little snippet to prevent people from including this script in the config.txt anymore
-def apply_script(*a):
-    raise NotImplementedError('"cbc" should not be included in config.txt!')
+    return CycleBlockCoiteratorProtocol, connection
