@@ -180,7 +180,7 @@ add(qbclear)
 add(qbrotate)
 
 def apply_script(protocol, connection, config):
-    cbc.set_protocol(protocol)
+    protocol, connection = cbc.apply_script(protocol, connection, config)
     
     class BuildConnection(connection):
         def __init__(self, *arg, **kw):
@@ -245,7 +245,7 @@ def apply_script(protocol, connection, config):
                     color = DIRT_COLOR if vx.has_colors else self.color
                 # structure is an iterator
                 self.send_chat('Building structure.')
-                cbc.add(self.quickbuild_generator((x, y, z), structure, color))
+                self.protocol.cbc_add(self.quickbuild_generator((x, y, z), structure, color))
                 self.qb_building = 0
                 self.qb_info = None
                 return False
