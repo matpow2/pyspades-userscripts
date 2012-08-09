@@ -216,7 +216,7 @@ def apply_script(protocol, connection, config):
             return connection.on_block_build(self, x, y, z)
         
         def on_block_removed(self, x, y, z):
-            if self.qb_recording != 0:
+            if self.qb_recording != 0 and self.qb_recorded:
                 x, y, z = [a-o for a,o in zip((x,y,z),self.qb_record_origin)]
                 self.qb_recorded.pop((x,y,z), None)
         
