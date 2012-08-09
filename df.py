@@ -5,6 +5,7 @@ from map import Map
 from pyspades.constants import *
 import commands
 import db
+import cbc
 
 # requires db.py in the /scripts directory
 # db not required to be in config.txt
@@ -20,6 +21,8 @@ def df(connection):
 add(df)
 
 def apply_script(protocol, connection, config):
+    protocol, connection = cbc.apply_script(protocol, connection, config)
+    
     class ClearFloorMakerConnection(connection):
         deflooring = 0
         clearfloor_x = 0

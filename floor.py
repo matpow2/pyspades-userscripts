@@ -5,6 +5,7 @@ from map import Map
 from pyspades.constants import *
 import commands
 import box
+import cbc
 
 # requires box.py script in the /scripts folder
 
@@ -19,6 +20,8 @@ def floor(connection):
 add(floor)
 
 def apply_script(protocol, connection, config):
+    protocol, connection = cbc.apply_script(protocol, connection, config)
+    
     class FloorMakerConnection(connection):
         flooring = 0
         floor_x = 0

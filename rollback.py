@@ -50,7 +50,7 @@ for func in (rollmap, rollback, rollbackcancel):
     add(func)
 
 def apply_script(protocol, connection, config):
-    cbc.set_protocol(protocol)
+    protocol, connection = cbc.apply_script(protocol, connection, config)
     
     rollback_on_game_end = config.get('rollback_on_game_end', False)
     
@@ -86,7 +86,7 @@ def apply_script(protocol, connection, config):
             self.send_chat(message, irc = True)
             generator = self.create_rollback_generator(self.map,
                         map, start_x, start_y, end_x, end_y, ignore_indestructable)
-            self.rollback_handle = cbc.add(generator
+            self.rollback_handle = self.cbc_add(generator
                 , self.rollback_time_between_progress_updates
                 , self.rollback_callback
                 , connection)
@@ -94,19 +94,19 @@ def apply_script(protocol, connection, config):
         def rollback_cancel(self, connection):
             if self.rollback_handle is None:
                 return S_NO_ROLLBACK_IN_PROGRESS
-            cbc.cancel(self.rollback_handle) #should call rollback_callback automatically
+            self.cbc_cancel(self.rollback_handle) #should call rollback_callback automatically
         
         def rollback_callback(self, cbctype, progress, elapsed, connection):
             message = ''
-            if cbctype == cbc.CANCELLED:
+            if cbctype == self.CBC_CANCELLED:
                 message = S_ROLLBACK_CANCELLED.format(player = connection.name)
                 self.rollback_handle = None
-            elif cbctype == cbc.FINISHED:
+            elif cbctype == self.CBC_FINISHED:
                 message = S_ROLLBACK_ENDED.format(result = '') + '\n' +  S_ROLLBACK_TIME_TAKEN.format(seconds = elapsed)
                 self.rollback_handle = None
-            elif cbctype == cbc.UPDATE and progress >= 0.0:
+            elif cbctype == self.CBC_UPDATE and progress >= 0.0:
                 message = S_ROLLBACK_PROGRESS.format(percent = progress)
-            elif cbctype == cbc.UPDATE and progress < 0.0:
+            elif cbctype == self.CBC_UPDATE and progress < 0.0:
                 message = S_ROLLBACK_COLOR_PASS.format(percent = abs(progress))
             if message != '':
                 self.send_chat(message, irc = True)

@@ -6,13 +6,12 @@ Maintainer: hompy
 
 from pyspades.server import block_action
 from pyspades.constants import *
-
 import cbc
 
 DIRTNADE_BLOCKS = 19
 
 def apply_script(protocol, connection, config):
-    cbc.set_protocol(protocol)
+    protocol, connection = cbc.apply_script(protocol, connection, config)
     
     def try_add_node(map, x, y, z, list):
         if x < 0 or x >= 512 or y < 0 or y >= 512 or z < 0 or z >= 62:
@@ -58,6 +57,6 @@ def apply_script(protocol, connection, config):
             x = int(position.x)
             y = int(position.y)
             z = int(position.z)
-            cbc.add(self.dirtnade_generator(x, y, z, DIRTNADE_BLOCKS))
+            self.protocol.cbc_add(self.dirtnade_generator(x, y, z, DIRTNADE_BLOCKS))
     
     return protocol, DirtGrenadeConnection

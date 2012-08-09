@@ -19,8 +19,6 @@ def ordered_product(ranges, order):
 MAX_LINE_BLOCKS = 64
 
 def build_filled_generator(protocol, x1, y1, z1, x2, y2, z2, color, god = False, god_build = False):
-    cbc.set_protocol(protocol)
-    
     # create a player instance, freed when the generator is done
     # other scripts that also use ServerPlayer won't get the same id!
     # this won't be necessary in 1.0
@@ -82,7 +80,7 @@ def build_filled(protocol, x1, y1, z1, x2, y2, z2, color, god = False, god_build
     if (x1 < 0 or x1 >= 512 or y1 < 0 or y1 >= 512 or z1 < 0 or z1 > 64 or
         x2 < 0 or x2 >= 512 or y2 < 0 or y2 >= 512 or z2 < 0 or z2 > 64):
         raise ValueError("Invalid coordinates: (%i, %i, %i):(%i, %i, %i)" % (x1, y1, z1, x2, y2, z2))
-    cbc.add(build_filled_generator(protocol, x1, y1, z1, x2, y2, z2, color))
+    protocol.cbc_add(build_filled_generator(protocol, x1, y1, z1, x2, y2, z2, color))
 
 def build_empty(protocol, x1, y1, z1, x2, y2, z2, color, god = False, god_build = False):
     build_filled(protocol, x1, y1, z1, x1, y2, z2, color, god, god_build)
@@ -104,7 +102,7 @@ def box(connection, filled = ""):
 add(box)
 
 def apply_script(protocol, connection, config):
-    cbc.set_protocol(protocol)
+    protocol, connection = cbc.apply_script(protocol, connection, config)
     
     class BoxMakerConnection(connection):
         def __init__(self, *arg, **kw):

@@ -5,6 +5,7 @@ from map import Map
 from pyspades.constants import *
 import commands
 import box
+import cbc
 
 # requires box.py script in the /scripts folder
 # box not required to be in config.txt
@@ -27,6 +28,8 @@ def wall(connection, value = ''):
 add(wall)
 
 def apply_script(protocol, connection, config):
+    protocol, connection = cbc.apply_script(protocol, connection, config)
+    
     class WallMakerConnection(connection):
         walling = None
         def on_block_build(self, x, y, z):

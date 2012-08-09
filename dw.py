@@ -5,6 +5,7 @@ from map import Map
 from pyspades.constants import *
 import commands
 import db
+import cbc
 
 # requires db.py in the /scripts directory
 # db not required to be in config.txt
@@ -27,6 +28,8 @@ def dw(connection, value = ''):
 add(dw)
 
 def apply_script(protocol, connection, config):
+    protocol, connection = cbc.apply_script(protocol, connection, config)
+    
     class DeWallMakerConnection(connection):
         dewalling = None
         def on_block_removed(self, x, y, z):

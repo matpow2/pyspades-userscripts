@@ -37,7 +37,7 @@ def clear_solid(protocol, x1, y1, z1, x2, y2, z2, god = False):
     if (x1 < 0 or x1 >= 512 or y1 < 0 or y1 >= 512 or z1 < 0 or z1 > 64 or
         x2 < 0 or x2 >= 512 or y2 < 0 or y2 >= 512 or z2 < 0 or z2 > 64):
         raise ValueError('Invalid coordinates: (%i, %i, %i):(%i, %i, %i)' % (x1, y1, z1, x2, y2, z2))
-    cbc.add(clear_solid_generator(protocol, x1, y1, z1, x2, y2, z2, god))
+    protocol.cbc_add(clear_solid_generator(protocol, x1, y1, z1, x2, y2, z2, god))
 
 def clear(protocol, x1, y1, z1, x2, y2, z2, god = False):
     x1, x2 = sorted((x1, x2))
@@ -52,7 +52,7 @@ def clear(protocol, x1, y1, z1, x2, y2, z2, god = False):
       , clear_solid_generator(protocol, x1, y1, z1, x2, y2, z1, god, False)
       , clear_solid_generator(protocol, x1, y1, z1, x2, y2, z2, god, True))
     
-    cbc.add(chain.from_iterable(lst))
+    protocol.cbc_add(chain.from_iterable(lst))
 
 @admin
 def db(connection):
@@ -65,7 +65,7 @@ def db(connection):
 add(db)
 
 def apply_script(protocol, connection, config):
-    cbc.set_protocol(protocol)
+    protocol, connection = cbc.apply_script(protocol, connection, config)
     
     class ClearBoxMakerConnection(connection):
         def __init__(self, *arg, **kw):
