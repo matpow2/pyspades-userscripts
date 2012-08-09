@@ -120,15 +120,6 @@ def qbclear(connection):
     connection.qb_recording = 0
     connection.send_chat('Quickbuild recorded blocks cleared.')
 
-@admin
-def qbundo(connection, qty = 1):
-    n = 0
-    for n in xrange(abs(int(qty))):
-        if len(connection.qb_recorded) == 0:
-            break
-        connection.qb_recorded.popitem()
-    connection.send_chat('Removed the last %i recorded blocks' % (n-1))
-
 @alias('br')
 @admin
 def buildrecorded(connection):
@@ -185,7 +176,6 @@ add(qbload)
 add(qbprint)
 
 add(qbclear)
-add(qbundo)
 
 add(qbrotate)
 
@@ -224,6 +214,11 @@ def apply_script(protocol, connection, config):
         def on_block_build(self, x, y, z):
             self.quickbuild_block_build(x, y, z)
             return connection.on_block_build(self, x, y, z)
+        
+        def on_block_removed(self, x, y, z):
+            if self.qb_recording != 0:
+                x, y, z = [a-o for a,o in zip((x,y,z),self.qb_record_origin)]
+                self.qb_recorded.pop((x,y,z), None)
         
         def quickbuild_block_build(self, x, y, z):
             if self.qb_recording:
