@@ -6,7 +6,6 @@ import math
 import io
 
 from itertools import izip, imap, chain, ifilter, product, repeat
-from collections import OrderedDict
 from struct import pack, unpack, calcsize
 
 # this module is an attempt at a self-contained pure-python "reference" implementation of a generic AVX loader/saver
@@ -148,10 +147,11 @@ class BitArrayND(BitArray):
             i += 1
 
 class AVX(BitArrayND):
-    avx_magic = OrderedDict([('magic', '3s'), ( 'ver', 'B')])
-    avx_headers_ver = [OrderedDict([('size_x', 'H'), ( 'size_y', 'H'), ( 'size_z', 'H'), ( 'has_colors', '?'), ( 'pad_bytes', 'B')])]
+    avx_magic = [('magic', '3s'), ('ver', 'B')]
+    avx_headers_ver = [
+            [('size_x', 'H'), ('size_y', 'H'), ('size_z', 'H'), ('has_colors', '?'), ('pad_bytes', 'B')]
+        ]
     
-    # color format versions? with packing/unpacking lambdas?
     magic = 'AVX'
     ver = 0
     
@@ -193,15 +193,15 @@ class AVX(BitArrayND):
         
         if ret.magic != cls.magic or ret.ver > cls.ver:
             raise ValueError() # unknown avx version
-
+        
         ret._load_attributes(fileobj, ret.avx_headers_ver[ret.ver])
-
+        
         bytes = int(math.ceil(ret.bits/8.0))
         bytes += -bytes % ret.pad_bytes
         ret.loadstring(fileobj.read(bytes), ret.bits)
         
-        #read at most x*y*z color tuples
         if ret.has_colors:
+            #read at most x*y*z color tuples
             str = fileobj.read(3*reduce(operator.mul, ret.shape))
             i = 0
             for xyz in product(*map(xrange, ret.shape)):
@@ -217,17 +217,17 @@ class AVX(BitArrayND):
         fileobj.seek(0, 2)
         size = fileobj.tell()
         fileobj.seek(pos, 0)
-        if size - pos < calcsize(''.join(attributes.values())):
+        if size - pos < calcsize(''.join(zip(*attributes)[1])):
             raise ValueError()
         
-        for attr, fmt in attributes.iteritems():
+        for attr, fmt in attributes:
             setattr(self, attr, unpack(fmt, fileobj.read(calcsize(fmt)))[0])
     
     def save(self, file = None, fileobj = None):
         if fileobj is None:
             return self.save(fileobj = open(file, 'wb'))
         
-        for attr, fmt in chain(self.avx_magic.iteritems(), self.avx_headers_ver[self.ver].iteritems()):
+        for attr, fmt in chain(self.avx_magic, self.avx_headers_ver[self.ver]):
             fileobj.write(pack(fmt, getattr(self, attr)))
         
         fileobj.write(self.tostring(self.pad_bytes))
