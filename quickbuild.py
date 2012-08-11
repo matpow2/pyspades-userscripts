@@ -3,13 +3,13 @@ from math import floor, atan2, pi
 from pyspades.constants import *
 from pyspades.contained import BlockAction, SetColor
 from pyspades.common import make_color
-from collections import OrderedDict
 from itertools import imap, izip
 import json
 import cbc
 import collections
 import itertools
 import os
+import re
 from avx import AVX
 
 QB_DIR = './qb'
@@ -54,60 +54,82 @@ def rotate_all(dct, fm, to):
 def rotate(coords, fm, to):
     return rotate_all({coords: None}, fm, to).next()[0]
 
+def qb_fname(name):
+    if not re.match('\w+$', name):
+        return None
+    fname = '%s/%s.avx' % (QB_DIR, name)
+    return fname
+
+def qb_get_info(fname):
+    try:
+        settings = json.load(open(fname, 'r'))
+    except (IOError, ValueError):
+        settings = {}
+    return settings
+
+def qb_update_info(fname, info):
+    current = qb_get_info(fname)
+    current.update(info)
+    json.dump(current, open(fname, 'w'))
+
 # Use these commands to create quickbuild structures.
 @admin
 def qbrecord(connection, colored = ''):
     if connection.qb_recording:
         connection.qb_recording = 0
-        connection.send_chat('You are no longer recording.')
+        return 'You are no longer recording.'
     else:
         connection.qb_recording = (colored.lower() == 'colored') + 1
-        colors = ' with colors' if connection.qb_recording == 2 else ''
-        connection.send_chat('You are now recording%s. First block marks the origin.' % colors)
+        colors = ' with colors' if connection.qb_recording == 2 else ' without colors'
+        return 'You are now recording%s. First block marks the origin.' % colors
 
 @admin
-def qbsave(connection, name):
-    if not name.isalnum():
-        connection.send_chat('Invalid save name. Only alphanumeric characters allowed.')
-        return
-    fname = '%s/%s.avx' % (QB_DIR, name)
+def qbsave(connection, name, cost = None, *description):
+    fname = qb_fname(name)
+    if not fname:
+        return 'Invalid save name. Only alphanumeric characters allowed.'
+    if not connection.qb_recorded:
+        return "You haven't recorded anything yet!"
     
     shift = map(min, zip(*connection.qb_recorded.iterkeys()))
     origin = [-x for x in shift]
     
-    settings = {'colored': connection.qb_recording == 2, 'origin': origin}
+    info = {'colored': connection.qb_recording == 2
+          , 'origin': origin}
+    if cost is not None:
+        info['cost'] = int(cost)
+    if description:
+        info['description'] = ' '.join(description)
     
-    json.dump(settings, open(fname + '.txt', 'w'))
+    qb_update_info(fname + '.txt', info)
     
     recorded = dict(shift_origin(connection.qb_recorded, shift))
-    AVX.fromsparsedict(recorded, settings['colored']).save(fname)
+    AVX.fromsparsedict(recorded, info['colored']).save(fname)
     
-    connection.send_chat('Saved to %s.avx' % name)
+    return 'Saved to %s.avx' % name
 
 @admin
 def qbload(connection, name):
-    if not name.isalnum():
-        connection.send_chat('Invalid load name. Only alphanumeric characters allowed.')
-        return
-    fname = '%s/%s.avx' % (QB_DIR, name)
+    fname = qb_fname(name)
+    if not fname:
+        return 'Invalid load name. Only alphanumeric characters allowed.'
     
-    settings = json.load(open(fname + '.txt', 'r'))
+    settings = qb_get_info(fname + '.txt')
+    
+    if not settings.has_key('origin'):
+        return 'Invalid information for file %s' % name
     
     recorded = AVX.fromfile(fname).tosparsedict()
     
-    connection.qb_recorded = OrderedDict(shift_origin(recorded, settings['origin']))
+    connection.qb_recorded = dict(shift_origin(recorded, settings['origin']))
     
-    connection.send_chat('Loaded %s.avx to recorded buffer!' % name)
-
-@admin
-def qbprint(connection):
-    print sorted(connection.qb_recorded.keys())
+    return 'Loaded %s.avx to recorded buffer.' % name
 
 @admin
 def qbrotate(connection, amount):
     amount = int(amount)
-    if amount in (NORTH, SOUTH, EAST, WEST):
-        connection.qb_recorded = OrderedDict(rotate_all(connection.qb_recorded, EAST, amount))
+    if amount in xrange(4):
+        connection.qb_recorded = dict(rotate_all(connection.qb_recorded, 0, amount))
 
 @admin
 def qbshiftorigin(connection):
@@ -115,10 +137,13 @@ def qbshiftorigin(connection):
 
 @admin
 def qbclear(connection):
+    message = 'Quickbuild recorded blocks cleared.'
+    if connection.qb_recording:
+        message += ' Recording stopped.'
     connection.qb_recorded.clear()
     connection.qb_record_origin = None
     connection.qb_recording = 0
-    connection.send_chat('Quickbuild recorded blocks cleared.')
+    return message
 
 @alias('br')
 @admin
@@ -126,45 +151,43 @@ def buildrecorded(connection):
     connection.qb_recording = 0
     connection.qb_building = 2
     connection.qb_info = None
-    connection.send_chat('The next block you place will build the recorded structure.')
+    return 'The next block you place will build the recorded structure.'
 
 # Build a structure.
 @alias('b')
-def build(connection, structure = None):
+def build(connection, name = None):
     if not connection.quickbuild_allowed:
-        connection.send_chat('You are not allowed to build')
-        return
-    builds = connection.protocol.config.get('build', {})
-    if structure is None:
+        return 'You are not allowed to build'
+    if name is None:
         connection.qb_building = 0
         connection.qb_info = None
-        connection.send_chat('QuickBuild: Available structures. NAME(cost). /build NAME. You have %i points.' % connection.qb_points)
         sts = ''
-        for name, info in builds.iteritems():
-            st = ', %s(%i)' % (name, info.get('cost',0))
+        for fname in glob.iglob(QB_DIR + '/*.avx.txt'):
+            info = qb_get_info(fname)
+            if not info.has_key('cost'):
+                continue
+            st = ', %s(%i)' % (name, info['cost'])
             if len(sts + st) >= MAX_CHAT_SIZE:
                 connection.send_chat(sts[2:])
                 sts = ''
             sts += st
         connection.send_chat(sts[2:])
+        return 'QuickBuild: Available structures. NAME(cost). /build NAME. You have %i points.' % connection.qb_points
     else:
         if connection.qb_info != None:
             connection.qb_building = 0
             connection.qb_info = None
-            connection.send_chat("No longer building.")
-            return
-        name = structure.lower()
-        if not builds.has_key(name):
-            connection.send_chat('The structure that you entered is invalid: %s' % name)
-            return
-        info = builds[name]
+            return "No longer building."
+        info = qb_get_info(qb_fname(name))
+        if not connection.god and not info.has_key('cost'):
+            return 'The structure that you entered is invalid: %s' % name
         cost = info.get('cost', 0)
         if connection.qb_points >= cost or connection.god:
             connection.qb_info = info
-            connection.send_chat('The next block you place will build a %s.' % info.get('description', name))
             connection.qb_building = 1
+            return 'The next block you place will build a %s.' % info.get('description', name)
         else:
-            connection.send_chat('You need %i more points if you want to build %s: %s.' 
+            return ('You need %i more points if you want to build %s: %s.' 
                 % (cost-connection.qb_points, name, info.get('description', name)))
 
 add(build)
@@ -173,7 +196,6 @@ add(buildrecorded)
 add(qbrecord)
 add(qbsave)
 add(qbload)
-add(qbprint)
 
 add(qbclear)
 
@@ -193,7 +215,7 @@ def apply_script(protocol, connection, config):
             self.qb_recording = 0
             self.qb_record_origin = None
             self.qb_record_dir = None
-            self.qb_recorded = OrderedDict()
+            self.qb_recorded = dict()
         
         def get_direction(self):
             orientation = self.world_object.orientation
@@ -216,7 +238,7 @@ def apply_script(protocol, connection, config):
             return connection.on_block_build(self, x, y, z)
         
         def on_block_removed(self, x, y, z):
-            if self.qb_recording != 0 and self.qb_recorded:
+            if self.qb_recording and self.qb_recorded:
                 x, y, z = [a-o for a,o in zip((x,y,z),self.qb_record_origin)]
                 self.qb_recorded.pop((x,y,z), None)
         
@@ -235,16 +257,14 @@ def apply_script(protocol, connection, config):
                     structure = rotate_all(self.qb_recorded, EAST, self.get_direction())
                     color = DIRT_COLOR if self.qb_recording == 2 else self.color
                 else:
-                    file = QB_DIR + '/' + self.qb_info['file']
-                    self.qb_points -= self.qb_info['cost']
-                    vx = AVX.fromfile(file)
-                    origin = json.load(open(file + '.txt', 'r')).get('origin', (0,0,0))
+                    self.qb_points -= self.qb_info.get('cost', 0)
+                    vx = AVX.fromfile(qb_fname(self.qb_info['name']))
                     structure = vx.tosparsedict()
-                    structure = shift_origin(structure, origin)
+                    structure = shift_origin(structure, self.qb_info['origin'])
                     structure = rotate_all(structure, EAST, self.get_direction())
                     color = DIRT_COLOR if vx.has_colors else self.color
-                # structure is an iterator
                 self.send_chat('Building structure.')
+                # structure is an iterator
                 self.protocol.cbc_add(self.quickbuild_generator((x, y, z), structure, color))
                 self.qb_building = 0
                 self.qb_info = None
