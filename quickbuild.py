@@ -27,7 +27,7 @@ Q_OFF, Q_BUILD, Q_BUILD_RECORDED = xrange(3)
 if not os.path.exists(QB_DIR):
     os.makedirs(QB_DIR)
 
-def shift_origin(dct, new_origin):
+def shift_origin_all(dct, new_origin):
     # dct is a dict (or another 2-tuple iterable) of tuple, color
     # returns a 2-tuple iterator
     # new_origin is relative to the current origin.
@@ -38,6 +38,9 @@ def shift_origin(dct, new_origin):
         dct = dct.iteritems()
     for k,v in dct:
         yield shift(k), v
+
+def shift_origin(coords, new_origin):
+    return shift_origin_all(((coords, None),), new_origin).next()[0]
 
 def rotate_all(dct, fm, to):
     # dct is a dict (or 2-tuple iterator) of tuple, color
@@ -58,14 +61,14 @@ def rotate_all(dct, fm, to):
         yield rot(k), v
 
 def rotate(coords, fm, to):
-    return rotate_all({coords: None}, fm, to).next()[0]
+    return rotate_all(((coords, None),), fm, to).next()[0]
 
 def get_blocks(vmap, xyz1, xyz2, colors = False):
     p = [xrange(a,b+1) for a,b in map(sorted, zip(xyz1, xyz2))]
     for xyz in itertools.product(*p):
         solid, color = vmap.get_point(*xyz)
         if solid:
-            yield xyz, color
+            yield xyz, color if colors else None
 
 def qb_fname(name):
     if not re.match('\w+$', name):
@@ -117,7 +120,7 @@ def qbsave(connection, name, cost = None, *description):
     
     qb_update_info(fname + '.txt', info)
     
-    recorded = dict(shift_origin(connection.qb_recorded, shift))
+    recorded = dict(shift_origin_all(connection.qb_recorded, shift))
     AVX.fromsparsedict(recorded, info['colored']).save(fname)
     
     return 'Saved to %s.avx' % name
@@ -136,7 +139,7 @@ def qbload(connection, name):
     
     recorded = AVX.fromfile(fname).tosparsedict()
     
-    connection.qb_recorded = dict(shift_origin(recorded, settings['origin']))
+    connection.qb_recorded = dict(shift_origin_all(recorded, settings['origin']))
     
     return 'Loaded %s.avx to recorded buffer.' % name
 
@@ -277,16 +280,17 @@ def apply_script(protocol, connection, config):
             return connection.on_block_build(self, x, y, z)
         
         def on_block_removed(self, x, y, z):
+            connection.on_block_removed(self, x, y, z)
             if self.qb_recording and self.qb_recorded:
-                x, y, z = [a-o for a,o in zip((x,y,z),self.qb_record_origin)]
-                self.qb_recorded.pop((x,y,z), None)
+                xyz = shift_origin((x,y,z),self.qb_record_origin)
+                self.qb_recorded.pop(xyz, 'Not popped')
         
         def quickbuild_block_build(self, x, y, z):
             if self.qb_recording:
                 if self.qb_record_origin is None:
                     self.qb_record_origin = (x, y, z)
                     self.qb_record_dir = self.get_direction()
-                xyz = tuple([a-b for a,b in zip((x,y,z), self.qb_record_origin)])
+                xyz = shift_origin((x,y,z), self.qb_record_origin)
                 xyz = rotate(xyz, self.qb_record_dir, EAST)
                 self.qb_recorded[xyz] = self.color if self.qb_record_colors else None
         
@@ -299,7 +303,7 @@ def apply_script(protocol, connection, config):
                     self.qb_points -= self.qb_info.get('cost', 0)
                     vx = AVX.fromfile(qb_fname(self.qb_info['name']))
                     structure = vx.tosparsedict()
-                    structure = shift_origin(structure, self.qb_info['origin'])
+                    structure = shift_origin_all(structure, self.qb_info['origin'])
                     structure = rotate_all(structure, EAST, self.get_direction())
                     color = DIRT_COLOR if vx.has_colors else self.color
                 self.send_chat('Building structure.')
@@ -315,7 +319,7 @@ def apply_script(protocol, connection, config):
                 return False
             elif self.qb_recording == Q_COPYING:
                 blocks = get_blocks(self.protocol.map, self.qb_record_origin, (x,y,z), self.qb_record_colors)
-                blocks = shift_origin(blocks, self.qb_record_origin)
+                blocks = shift_origin_all(blocks, self.qb_record_origin)
                 blocks = rotate_all(blocks, EAST, self.qb_record_dir)
                 self.qb_recorded = dict(blocks)
                 self.send_chat('Copied area to buffer!')
