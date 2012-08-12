@@ -18,6 +18,12 @@ DIRT_COLOR = (103, 64, 40)
 
 EAST, SOUTH, WEST, NORTH = xrange(4)
 
+# recording modes
+Q_STOPPED, Q_RECORDING, Q_COPYING, Q_ORIGINATING = xrange(4)
+
+# build modes
+Q_OFF, Q_BUILD, Q_BUILD_RECORDED = xrange(3)
+
 if not os.path.exists(QB_DIR):
     os.makedirs(QB_DIR)
 
@@ -54,6 +60,13 @@ def rotate_all(dct, fm, to):
 def rotate(coords, fm, to):
     return rotate_all({coords: None}, fm, to).next()[0]
 
+def get_blocks(vmap, xyz1, xyz2, colors = False):
+    p = [xrange(a,b+1) for a,b in map(sorted, zip(xyz1, xyz2))]
+    for xyz in itertools.product(*p):
+        solid, color = vmap.get_point(*xyz)
+        if solid:
+            yield xyz, color
+
 def qb_fname(name):
     if not re.match('\w+$', name):
         return None
@@ -63,7 +76,7 @@ def qb_fname(name):
 def qb_get_info(fname):
     try:
         settings = json.load(open(fname, 'r'))
-    except (IOError, ValueError):
+    except (IOError, ValueError), e:
         settings = {}
     return settings
 
@@ -76,12 +89,13 @@ def qb_update_info(fname, info):
 @admin
 def qbrecord(connection, colored = ''):
     if connection.qb_recording:
-        connection.qb_recording = 0
-        return 'You are no longer recording.'
+        connection.qb_recording = Q_STOPPED
+        return 'No longer recording.'
     else:
-        connection.qb_recording = (colored.lower() == 'colored') + 1
-        colors = ' with colors' if connection.qb_recording == 2 else ' without colors'
-        return 'You are now recording%s. First block marks the origin.' % colors
+        connection.qb_recording = Q_RECORDING
+        connection.qb_record_colors = colored.lower() == 'colored'
+        colors = 'with' if connection.qb_record_colors else 'without'
+        return 'Now recording %s colors. First block marks the origin.' % colors
 
 @admin
 def qbsave(connection, name, cost = None, *description):
@@ -89,12 +103,12 @@ def qbsave(connection, name, cost = None, *description):
     if not fname:
         return 'Invalid save name. Only alphanumeric characters allowed.'
     if not connection.qb_recorded:
-        return "You haven't recorded anything yet!"
+        return 'Nothing is recorded yet!'
     
     shift = map(min, zip(*connection.qb_recorded.iterkeys()))
     origin = [-x for x in shift]
     
-    info = {'colored': connection.qb_recording == 2
+    info = {'colored': connection.qb_record_colors
           , 'origin': origin}
     if cost is not None:
         info['cost'] = int(cost)
@@ -113,6 +127,7 @@ def qbload(connection, name):
     fname = qb_fname(name)
     if not fname:
         return 'Invalid load name. Only alphanumeric characters allowed.'
+    qbclear(connection)
     
     settings = qb_get_info(fname + '.txt')
     
@@ -126,6 +141,10 @@ def qbload(connection, name):
     return 'Loaded %s.avx to recorded buffer.' % name
 
 @admin
+def qbprint(connection):
+    print connection.qb_recorded
+
+@admin
 def qbrotate(connection, amount):
     amount = int(amount)
     if amount in xrange(4):
@@ -136,22 +155,35 @@ def qbshiftorigin(connection):
     pass
 
 @admin
+def qbcopy(connection, colored = ''):
+    qbclear(connection)
+    connection.qb_recording = Q_COPYING
+    message = ''
+    connection.qb_record_colors = colored.lower() == 'colored'
+    message = 'with' if connection.qb_record_colors else 'without'
+    return 'Copying %s colors. Place first corner block, which will be the origin.' % message
+
+@admin
 def qbclear(connection):
     message = 'Quickbuild recorded blocks cleared.'
     if connection.qb_recording:
         message += ' Recording stopped.'
     connection.qb_recorded.clear()
     connection.qb_record_origin = None
-    connection.qb_recording = 0
+    connection.qb_record_colors = False
+    connection.qb_recording = Q_STOPPED
     return message
 
 @alias('br')
 @admin
 def buildrecorded(connection):
-    connection.qb_recording = 0
-    connection.qb_building = 2
+    message = 'The next block you place will build the recorded structure.'
+    if connection.qb_recording != Q_STOPPED:
+        message += ' Recording stopped.'
+    connection.qb_recording = Q_STOPPED
+    connection.qb_building = Q_BUILD_RECORDED
     connection.qb_info = None
-    return 'The next block you place will build the recorded structure.'
+    return message
 
 # Build a structure.
 @alias('b')
@@ -159,7 +191,7 @@ def build(connection, name = None):
     if not connection.quickbuild_allowed:
         return 'You are not allowed to build'
     if name is None:
-        connection.qb_building = 0
+        connection.qb_building = Q_OFF
         connection.qb_info = None
         sts = ''
         for fname in glob.iglob(QB_DIR + '/*.avx.txt'):
@@ -175,16 +207,20 @@ def build(connection, name = None):
         return 'QuickBuild: Available structures. NAME(cost). /build NAME. You have %i points.' % connection.qb_points
     else:
         if connection.qb_info != None:
-            connection.qb_building = 0
+            connection.qb_building = Q_OFF
             connection.qb_info = None
             return "No longer building."
-        info = qb_get_info(qb_fname(name))
+        fname = qb_fname(name)
+        if fname is None:
+            return 'Invalid structure'
+        info = qb_get_info(fname + '.txt')
         if not connection.god and not info.has_key('cost'):
             return 'The structure that you entered is invalid: %s' % name
         cost = info.get('cost', 0)
+        info['name'] = name
         if connection.qb_points >= cost or connection.god:
             connection.qb_info = info
-            connection.qb_building = 1
+            connection.qb_building = Q_BUILD
             return 'The next block you place will build a %s.' % info.get('description', name)
         else:
             return ('You need %i more points if you want to build %s: %s.' 
@@ -194,8 +230,10 @@ add(build)
 add(buildrecorded)
 
 add(qbrecord)
+add(qbcopy)
 add(qbsave)
 add(qbload)
+# add(qbprint)
 
 add(qbclear)
 
@@ -210,9 +248,10 @@ def apply_script(protocol, connection, config):
             self.quickbuild_allowed = True
             self.qb_info = None
             self.qb_points = 0
-            self.qb_building = 0
+            self.qb_building = Q_OFF
             
-            self.qb_recording = 0
+            self.qb_recording = Q_STOPPED
+            self.qb_record_colors = False
             self.qb_record_origin = None
             self.qb_record_dir = None
             self.qb_recorded = dict()
@@ -249,13 +288,13 @@ def apply_script(protocol, connection, config):
                     self.qb_record_dir = self.get_direction()
                 xyz = tuple([a-b for a,b in zip((x,y,z), self.qb_record_origin)])
                 xyz = rotate(xyz, self.qb_record_dir, EAST)
-                self.qb_recorded[xyz] = self.color if self.qb_recording == 2 else None
+                self.qb_recorded[xyz] = self.color if self.qb_record_colors else None
         
         def on_block_build_attempt(self, x, y, z):
             if self.qb_building:
-                if self.qb_building == 2:
+                if self.qb_building == Q_BUILD_RECORDED:
                     structure = rotate_all(self.qb_recorded, EAST, self.get_direction())
-                    color = DIRT_COLOR if self.qb_recording == 2 else self.color
+                    color = DIRT_COLOR if self.qb_record_colors else self.color
                 else:
                     self.qb_points -= self.qb_info.get('cost', 0)
                     vx = AVX.fromfile(qb_fname(self.qb_info['name']))
@@ -264,14 +303,22 @@ def apply_script(protocol, connection, config):
                     structure = rotate_all(structure, EAST, self.get_direction())
                     color = DIRT_COLOR if vx.has_colors else self.color
                 self.send_chat('Building structure.')
-                # structure is an iterator
                 self.protocol.cbc_add(self.quickbuild_generator((x, y, z), structure, color))
-                self.qb_building = 0
+                self.qb_building = Q_OFF
                 self.qb_info = None
                 return False
             elif self.qb_recording and self.qb_record_origin is None:
                 self.qb_record_origin = (x, y, z)
                 self.qb_record_dir = self.get_direction()
+                if self.qb_recording == Q_COPYING:
+                    self.send_chat('Now place the second block!')
+                return False
+            elif self.qb_recording == Q_COPYING:
+                blocks = get_blocks(self.protocol.map, self.qb_record_origin, (x,y,z), self.qb_record_colors)
+                blocks = shift_origin(blocks, self.qb_record_origin)
+                blocks = rotate_all(blocks, EAST, self.qb_record_dir)
+                self.qb_recorded = dict(blocks)
+                self.send_chat('Copied area to buffer!')
                 return False
             return connection.on_block_build_attempt(self, x, y, z)
         
@@ -292,7 +339,10 @@ def apply_script(protocol, connection, config):
             
             protocol.send_contained(set_color, save = True)
             
-            for xyz, color in structure:
+            if not isinstance(structure, dict):
+                structure = dict(structure)
+            
+            for xyz, color in structure.iteritems():
                 x, y, z = [a+b for a,b in zip(xyz, origin)]
                 if (x < 0 or x >= 512 or y < 0 or y >= 512 or z < 0 or z >= 62):
                     continue
