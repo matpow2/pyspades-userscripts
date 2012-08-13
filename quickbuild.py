@@ -95,10 +95,15 @@ def qbrecord(connection, colored = ''):
         connection.qb_recording = Q_STOPPED
         return 'No longer recording.'
     else:
+        s_colors = 'WITHOUT'
+        s_origin = ' First block sets the origin and orientation.'
         connection.qb_recording = Q_RECORDING
         connection.qb_record_colors = colored.lower() == 'colored'
-        colors = 'with' if connection.qb_record_colors else 'without'
-        return 'Now recording %s colors. First block marks the origin.' % colors
+        if connection.qb_record_colors:
+            s_colors = 'WITH'
+        if connection.qb_record_origin:
+            s_origin = ''
+        return 'Now recording %s colors.%s' % (s_colors, s_origin)
 
 @admin
 def qbsave(connection, name, cost = None, *description):
@@ -123,7 +128,7 @@ def qbsave(connection, name, cost = None, *description):
     recorded = dict(shift_origin_all(connection.qb_recorded, shift))
     AVX.fromsparsedict(recorded, info['colored']).save(fname)
     
-    return 'Saved to %s.avx' % name
+    return 'Saved buffer to %s.avx' % name
 
 @admin
 def qbload(connection, name):
@@ -141,7 +146,7 @@ def qbload(connection, name):
     
     connection.qb_recorded = dict(shift_origin_all(recorded, settings['origin']))
     
-    return 'Loaded %s.avx to recorded buffer.' % name
+    return 'Loaded %s.avx to buffer.' % name
 
 @admin
 def qbprint(connection):
@@ -155,16 +160,23 @@ def qbrotate(connection, amount):
 
 @admin
 def qbshiftorigin(connection):
-    pass
+    if not connection.qb_recording:
+        return 'You must be recording first.'
+    if not connection.qb_record_origin or not connection.qb_recorded:
+        return 'Nothing recorded yet!'
+    if connection.qb_recording == Q_ORIGINATING:
+        connection.qb_recording = Q_STOPPED
+        return 'No longer changing the origin. Recording stopped.'
+    connection.qb_recording = Q_ORIGINATING
+    return 'Place a block to mark the new origin AND orientation!'
 
 @admin
 def qbcopy(connection, colored = ''):
     qbclear(connection)
     connection.qb_recording = Q_COPYING
-    message = ''
     connection.qb_record_colors = colored.lower() == 'colored'
-    message = 'with' if connection.qb_record_colors else 'without'
-    return 'Copying %s colors. Place first corner block, which will be the origin.' % message
+    s_colors = 'WITH' if connection.qb_record_colors else 'WITHOUT'
+    return 'Copying %s colors. Place first corner block. This sets the the origin and orientation.' % s_colors
 
 @admin
 def qbclear(connection):
@@ -215,10 +227,10 @@ def build(connection, name = None):
             return "No longer building."
         fname = qb_fname(name)
         if fname is None:
-            return 'Invalid structure'
+            return 'Invalid structure name'
         info = qb_get_info(fname + '.txt')
         if not connection.god and not info.has_key('cost'):
-            return 'The structure that you entered is invalid: %s' % name
+            return 'Invalid structure'
         cost = info.get('cost', 0)
         info['name'] = name
         if connection.qb_points >= cost or connection.god:
@@ -233,14 +245,14 @@ add(build)
 add(buildrecorded)
 
 add(qbrecord)
-add(qbcopy)
 add(qbsave)
 add(qbload)
+add(qbclear)
 # add(qbprint)
 
-add(qbclear)
-
+add(qbcopy)
 add(qbrotate)
+add(qbshiftorigin)
 
 def apply_script(protocol, connection, config):
     protocol, connection = cbc.apply_script(protocol, connection, config)
@@ -295,6 +307,23 @@ def apply_script(protocol, connection, config):
                 self.qb_recorded[xyz] = self.color if self.qb_record_colors else None
         
         def on_block_build_attempt(self, x, y, z):
+            cont = True
+            if self.qb_recording and not self.qb_record_origin:
+                self.qb_record_origin = (x, y, z)
+                self.qb_record_dir = self.get_direction()
+                if self.qb_recording == Q_COPYING:
+                    self.send_chat('Now place the opposite corner block!')
+                else:
+                    self.send_chat('Now start building!')
+                cont = False
+            elif self.qb_recording == Q_COPYING:
+                blocks = get_blocks(self.protocol.map, self.qb_record_origin, (x,y,z), self.qb_record_colors)
+                blocks = shift_origin_all(blocks, self.qb_record_origin)
+                blocks = rotate_all(blocks, EAST, self.qb_record_dir)
+                self.qb_recorded = dict(blocks)
+                self.send_chat('Copied area to buffer!')
+                cont = False
+            
             if self.qb_building:
                 if self.qb_building == Q_BUILD_RECORDED:
                     structure = rotate_all(self.qb_recorded, EAST, self.get_direction())
@@ -306,23 +335,21 @@ def apply_script(protocol, connection, config):
                     structure = shift_origin_all(structure, self.qb_info['origin'])
                     structure = rotate_all(structure, EAST, self.get_direction())
                     color = DIRT_COLOR if vx.has_colors else self.color
-                self.send_chat('Building structure.')
                 self.protocol.cbc_add(self.quickbuild_generator((x, y, z), structure, color))
                 self.qb_building = Q_OFF
                 self.qb_info = None
-                return False
-            elif self.qb_recording and self.qb_record_origin is None:
-                self.qb_record_origin = (x, y, z)
-                self.qb_record_dir = self.get_direction()
-                if self.qb_recording == Q_COPYING:
-                    self.send_chat('Now place the second block!')
-                return False
-            elif self.qb_recording == Q_COPYING:
-                blocks = get_blocks(self.protocol.map, self.qb_record_origin, (x,y,z), self.qb_record_colors)
-                blocks = shift_origin_all(blocks, self.qb_record_origin)
-                blocks = rotate_all(blocks, EAST, self.qb_record_dir)
-                self.qb_recorded = dict(blocks)
-                self.send_chat('Copied area to buffer!')
+                self.send_chat('Building structure!')
+                cont = False
+            
+            if self.qb_recording == Q_ORIGINATING:
+                new_origin = (x,y,z)
+                shift = shift_origin(self.qb_record_origin, new_origin)
+                self.qb_recorded = dict(shift_origin_all(self.qb_recorded, shift))
+                self.qb_record_origin = new_origin
+                self.send_chat('New origin saved!')
+                cont = False
+            
+            if not cont:
                 return False
             return connection.on_block_build_attempt(self, x, y, z)
         
