@@ -4,15 +4,24 @@ import collections
 import operator
 import math
 import io
+import gzip
+import os
 
 from itertools import izip, imap, chain, ifilter, product, repeat
 from struct import pack, unpack, calcsize
 
-# this module is an attempt at a self-contained pure-python "reference" implementation of a generic AVX loader/saver
+# this module is a self-contained pure python implementation of a generic AVX loader/saver
+
+# AVX Header: magic "AVX" followed by a version byte. Then a version-specific header.
+# Depending on the version and header, it will load fixed or variable sized voxel geometry 
+#   and optionally color data for surface voxels.
+
+# A voxel is surface IFF: 
+#   it is solid AND (one of its neighbors is not solid OR it is on the edge)
 
 # Note: This is probably a better implementation of bitarrays: http://pypi.python.org/pypi/bitarray#downloads
 
-DEFAULT_COLOR =  (15,15,15)
+DEFAULT_COLOR =  (103, 64, 40)
 
 class BitArray(object):
     _bits = 8
@@ -146,7 +155,20 @@ class BitArrayND(BitArray):
                 yield n
             i += 1
 
+def open_gzip(file = None, fileobj = None):
+    if fileobj is None:
+        if not os.path.isfile(file) and os.path.isfile(file + '.gz'):
+            file += '.gz'
+        return open_gzip(fileobj = open(file, 'rb'))
+    p = fileobj.tell()
+    magic = unpack('H', fileobj.read(2))
+    fileobj.seek(p, 0)
+    if magic == 0x1F8B: # .gz magic
+        fileobj = gzip.GzipFile(fileobj = fileobj)
+    return fileobj
+
 class AVX(BitArrayND):
+    # headers [(attribute_name, struct.fmt)]
     avx_magic = [('magic', '3s'), ('ver', 'B')]
     avx_headers_ver = [
             [('size_x', 'H'), ('size_y', 'H'), ('size_z', 'H'), ('has_colors', '?'), ('pad_bytes', 'B')]
@@ -184,15 +206,14 @@ class AVX(BitArrayND):
     
     @classmethod
     def fromfile(cls, file = None, fileobj = None):
-        if fileobj is None:
-            return cls.fromfile(fileobj = open(file, 'rb'))
+        fileobj = open_gzip(file, fileobj)
         
         # new instance, load magic attributes
         ret = cls(0, 0, 0)
         ret._load_attributes(fileobj, cls.avx_magic)
         
         if ret.magic != cls.magic or ret.ver > cls.ver:
-            raise ValueError() # unknown avx version
+            raise IOError("Not an AVX file")
         
         ret._load_attributes(fileobj, ret.avx_headers_ver[ret.ver])
         
@@ -218,14 +239,16 @@ class AVX(BitArrayND):
         size = fileobj.tell()
         fileobj.seek(pos, 0)
         if size - pos < calcsize(''.join(zip(*attributes)[1])):
-            raise ValueError()
+            raise EOFError("Incomplete AVX file.")
         
         for attr, fmt in attributes:
             setattr(self, attr, unpack(fmt, fileobj.read(calcsize(fmt)))[0])
     
-    def save(self, file = None, fileobj = None):
+    def save(self, file = None, fileobj = None, compresslevel = None):
         if fileobj is None:
             return self.save(fileobj = open(file, 'wb'))
+        if compresslevel:
+            return self.save(fileobj = GzipFile(fileobj = fileobj, compresslevel = compresslevel))
         
         for attr, fmt in chain(self.avx_magic, self.avx_headers_ver[self.ver]):
             fileobj.write(pack(fmt, getattr(self, attr)))
