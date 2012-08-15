@@ -1,22 +1,17 @@
-from pyspades.server import block_action
-from pyspades.collision import distance_3d_vector
 from commands import add, admin
-from map import Map
-from pyspades.constants import *
-import commands
-import box
+import buildbox
 import cbc
 
-# requires box.py script in the /scripts folder
+# requires buildbox.py script in the /scripts folder
 
 @admin
 def floor(connection):
-        if connection.flooring > 0:
-            connection.flooring = 0
-            return 'Floor generator cancelled'
-        else:
-            connection.flooring = 1
-            return 'Place first corner block'
+    if connection.flooring > 0:
+        connection.flooring = 0
+        return 'Floor generator cancelled'
+    else:
+        connection.flooring = 1
+        return 'Place first corner block'
 add(floor)
 
 def apply_script(protocol, connection, config):
@@ -35,7 +30,7 @@ def apply_script(protocol, connection, config):
                 self.flooring = 0
                 if self.floor_z != z:
                     self.send_chat('Surface is uneven! Using first height.')
-                box.build_filled(self.protocol
+                buildbox.build_filled(self.protocol
                     , self.floor_x, self.floor_y, self.floor_z
                     , x, y, self.floor_z
                     , self.color, self.god, self.god_build)

@@ -1,14 +1,8 @@
-from pyspades.server import block_action
-from pyspades.collision import distance_3d_vector
 from commands import add, admin
-from map import Map
-from pyspades.constants import *
-import commands
-import db
+import clearbox
 import cbc
 
-# requires db.py in the /scripts directory
-# db not required to be in config.txt
+# requires clearbox.py in the /scripts directory
 
 def sign(x):
     return (x > 0) - (x < 0)
@@ -38,7 +32,7 @@ def apply_script(protocol, connection, config):
         def on_block_removed(self, x, y, z):
             if self.dewalling is not None:
                 z2 = min(61, max(0, z - self.dewalling + sign(self.dewalling)))
-                db.clear_solid(self.protocol, x, y, z, x, y, z2, self.god)
+                clearbox.clear_solid(self.protocol, x, y, z, x, y, z2, self.god)
             return connection.on_block_removed(self, x, y, z)
     
     return protocol, DeWallMakerConnection
