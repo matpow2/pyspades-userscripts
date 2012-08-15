@@ -31,10 +31,14 @@ def apply_script(protocol, connection, config):
     protocol, connection = cbc.apply_script(protocol, connection, config)
     
     class WallMakerConnection(connection):
-        walling = None
+        def __init__(self, *arg, **kw):
+            connection.__init__(self, *arg, **kw)
+            self.walling = None
+        
         def on_block_build(self, x, y, z):
             if self.walling is not None:
                 z2 = min(61, max(0, z - self.walling + sign(self.walling)))
                 box.build_filled(self.protocol, x, y, z, x, y, z2, self.color, self.god, self.god_build)
             return connection.on_block_build(self, x, y, z)
+    
     return protocol, WallMakerConnection

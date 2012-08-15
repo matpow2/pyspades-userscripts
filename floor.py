@@ -23,10 +23,12 @@ def apply_script(protocol, connection, config):
     protocol, connection = cbc.apply_script(protocol, connection, config)
     
     class FloorMakerConnection(connection):
-        flooring = 0
-        floor_x = 0
-        floor_y = 0
-        floor_z = 0
+        def __init__(self, *arg, **kw):
+            connection.__init__(self, *arg, **kw)
+            self.flooring = 0
+            self.floor_x = 0
+            self.floor_y = 0
+            self.floor_z = 0
         
         def on_block_build(self, x, y, z):
             if self.flooring == 2:

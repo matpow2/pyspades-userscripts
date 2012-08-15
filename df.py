@@ -24,10 +24,12 @@ def apply_script(protocol, connection, config):
     protocol, connection = cbc.apply_script(protocol, connection, config)
     
     class ClearFloorMakerConnection(connection):
-        deflooring = 0
-        clearfloor_x = 0
-        clearfloor_y = 0
-        clearfloor_z = 0
+        def __init__(self, *args, **kwargs):
+            connection.__init__(self, *args, **kwargs)
+            self.deflooring = 0
+            self.clearfloor_x = 0
+            self.clearfloor_y = 0
+            self.clearfloor_z = 0
         
         def on_block_removed(self, x, y, z):
             if self.deflooring == 2:

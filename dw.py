@@ -31,10 +31,14 @@ def apply_script(protocol, connection, config):
     protocol, connection = cbc.apply_script(protocol, connection, config)
     
     class DeWallMakerConnection(connection):
-        dewalling = None
+        def __init__(self, *args, **kwargs):
+            connection.__init__(self, *args, **kwargs)
+            self.dewalling = None
+        
         def on_block_removed(self, x, y, z):
             if self.dewalling is not None:
                 z2 = min(61, max(0, z - self.dewalling + sign(self.dewalling)))
                 db.clear_solid(self.protocol, x, y, z, x, y, z2, self.god)
             return connection.on_block_removed(self, x, y, z)
+    
     return protocol, DeWallMakerConnection
