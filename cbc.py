@@ -56,7 +56,7 @@ class ServerPlayer(object):
     server_players = set()
     
     def __init__(self):
-        id = 32
+        id = 33
         while id in ServerPlayer.server_players:
             id += 1
         self.player_id = id
