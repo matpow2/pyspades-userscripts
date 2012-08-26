@@ -1,3 +1,9 @@
+"""
+Build structures instantly, and easily record new ones!
+
+See: https://github.com/infogulch/pyspades-userscripts/wiki/Quickbuild
+"""
+
 from commands import add, alias, admin
 from math import floor, atan2, pi
 from pyspades.constants import *
