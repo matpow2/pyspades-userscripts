@@ -109,15 +109,15 @@ def apply_script(protocol, connection, config):
         
         def on_block_destroy(self, x, y, z, value):
             if (self.zombies_playermode == ZOMBIE and value == DESTROY_BLOCK and self.tool == SPADE_TOOL):
-                    map = self.protocol.map
-                    ztel = self.protocol.ZOMBIE_TELEPORT
-                    player_location = self.world_object.position
-                    px, py, pz = player_location.x, player_location.y, player_location.z
-                    if (not map.get_solid(px, py, pz-ztel+1)
-                    and not map.get_solid(px, py, pz-ztel+2)
-                    and not map.get_solid(px, py, pz-ztel+3)):
-                        self.create_explosion_effect(player_location)
-                        self.set_location((px, py, pz - ztel))
+                map = self.protocol.map
+                ztel = self.protocol.ZOMBIE_TELEPORT
+                player_location = self.world_object.position
+                px, py, pz = player_location.x, player_location.y, player_location.z
+                if (not map.get_solid(px, py, pz-ztel+1)
+                and not map.get_solid(px, py, pz-ztel+2)
+                and not map.get_solid(px, py, pz-ztel+3)):
+                    self.create_explosion_effect(player_location)
+                    self.set_location((px, py, pz - ztel))
             return connection.on_block_destroy(self, x, y, z, value)
         
         def on_flag_capture(self):
@@ -156,28 +156,28 @@ def apply_script(protocol, connection, config):
                 if type == FALL_KILL:
                     return False
             elif hit_player.zombies_playermode == ZOMBIE and self.weapon == SMG_WEAPON:
-                   new_hit = (new_hit/(self.protocol.ZOMBIE_HP/100))
-                   if new_hit >=25:
-                       self.create_explosion_effect(hit_player.world_object.position)
-                       self.send_chat("!!!HOLY SHIT UBER DAMAGE!!!")
+                new_hit = (new_hit/(self.protocol.ZOMBIE_HP/100))
+                if new_hit >=25:
+                    self.create_explosion_effect(hit_player.world_object.position)
+                    self.send_chat("!!!HOLY SHIT UBER DAMAGE!!!")
             elif hit_player.zombies_playermode == ZOMBIE and self.weapon != SMG_WEAPON:
-                   if self.weapon == SHOTGUN_WEAPON:
-                       new_hit = new_hit/(self.protocol.ZOMBIE_HP/100)/8
-                   else:
-                       new_hit = new_hit/(self.protocol.ZOMBIE_HP/100)
-                   if new_hit >=25:
-                       self.create_explosion_effect(hit_player.world_object.position)
-                       self.send_chat("!!!HOLY SHIT UBER DAMAGE!!!")
+                if self.weapon == SHOTGUN_WEAPON:
+                    new_hit = new_hit/(self.protocol.ZOMBIE_HP/100)/8
+                else:
+                    new_hit = new_hit/(self.protocol.ZOMBIE_HP/100)
+                if new_hit >=25:
+                    self.create_explosion_effect(hit_player.world_object.position)
+                    self.send_chat("!!!HOLY SHIT UBER DAMAGE!!!")
             elif self.zombies_playermode == ZOMBIE and type != MELEE_KILL:
                 return False #this should never happen, but just in case
             elif (self.team is self.protocol.blue_team and self.team == hit_player.team and 
                      type == MELEE_KILL):
-                   if hit_player.hp >= 100:
-                       if self.health_message == True:
-                           self.health_message = False
-                           self.send_chat(hit_player.name + ' is at full health.')
-                   elif hit_player.hp > 0:
-                       hit_player.set_hp(hit_player.hp + HEAL_RATE)
+                if hit_player.hp >= 100:
+                    if self.health_message == True:
+                        self.health_message = False
+                        self.send_chat(hit_player.name + ' is at full health.')
+                elif hit_player.hp > 0:
+                    hit_player.set_hp(hit_player.hp + HEAL_RATE)
             return new_hit
         
         def on_kill(self, killer, type, grenade):
@@ -195,9 +195,9 @@ def apply_script(protocol, connection, config):
             weapon_reload.player_id = self.player_id
             weapon_reload.clip_ammo = 0
             weapon_reload.reserve_ammo = 0
-            self.weapon_object.clip_ammo = 0
-            self.weapon_object.reserve_ammo = 0
             self.send_contained(weapon_reload)
+            self.weapon_object.current_ammo = 0
+            self.weapon_object.current_stock = 0
         
         def refill(self, local = False):
             connection.refill(self, local)
