@@ -64,7 +64,9 @@ def apply_script(protocol, connection, config):
             self.ZOMBIE_SPAWN_HEIGHT = 0
     
     class ZombiesConnection(connection):
-        zombies_playermode = 0 #must be a class instance variable to overload connection.refill()
+        def __init__(self, *args, **kwargs):
+            self.zombies_playermode = 0
+            connection.__init__(self, *args, **kwargs)
         
         def on_spawn(self, pos):
             if self.team is self.protocol.green_team:
@@ -127,13 +129,6 @@ def apply_script(protocol, connection, config):
                 self.send_chat('YOU ARE HUMAN NOW RAWR GO SHOOT EM')
                 self.protocol.send_chat('%s has become a human-zombie and can use weapons!' % self.name)
             return connection.on_flag_capture(self)
-        
-        def on_flag_take(self):
-            if self.team is self.protocol.blue_team:
-                self.set_hp(self.hp*2)
-            else:
-                self.set_hp(self.hp/1.6)
-            return connection.on_flag_take(self)
         
         def on_grenade(self, time_left):
             if self.zombies_playermode == ZOMBIE:
