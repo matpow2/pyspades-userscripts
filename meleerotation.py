@@ -3,6 +3,12 @@ MeleeRotation
 Melee round every N rounds.
 
 Requires melee.py to be loaded.
+
+ISSUES:
+    1. The first N rounds are melee unless the mode is manually unset
+       when meleerotation is below melee in config.txt
+    2. Players must return to their tentthings once melee mode is off
+       to be able to shoot.
 """
 
 ROTATE_EVERY = 3
