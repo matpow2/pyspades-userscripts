@@ -53,8 +53,19 @@ def apply_script(protocol, connection, config):
             return connection.on_join(self)
         
         def on_spawn(self, pos):
-            self.clear_ammo()
+            if self.protocol.melee_mode:
+                self.clear_ammo()
         
+        def on_refill(self):
+            if not self.protocol.melee_mode:
+                weapon_reload.player_id = self.player_id
+                weapon_reload.clip_ammo = self.weapon_object.current_ammo
+                weapon_reload.reserve_ammo = self.weapon_object.current_stock
+                self.send_contained(weapon_reload)
+
+                self.weapon_object.reload()
+            return connection.on_refill(self)
+
         # clear_ammo() method by infogulch
         def clear_ammo(self):
             weapon_reload.player_id = self.player_id
