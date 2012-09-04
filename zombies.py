@@ -102,7 +102,7 @@ def apply_script(protocol, connection, config):
         def on_line_build_attempt(self, points):
             if self.zombies_playermode == ZOMBIE:
                 return False
-            return connection.on_line_build_attempt(points)
+            return connection.on_line_build_attempt(self, points)
         
         def on_block_build_attempt(self, x, y, z):
             if self.zombies_playermode == ZOMBIE:
