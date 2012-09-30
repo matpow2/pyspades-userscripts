@@ -1,7 +1,7 @@
 """
 Make gradient lines!
 
-/gradient
+/gradient r g b r g b
 
 alias: /gr
 
@@ -18,9 +18,12 @@ import cbc
 @alias('gr')
 def gradient(connection, *colors):
     if len(colors) != 6:
-        if not connection.gradient_enabled and connection.gradient_colors:
+        if not connection.gradient_colors:
+            return 'Usage: /gradient r g b r g b, OR choose from & to colors with /grf /grt'
+        if not connection.gradient_enabled:
             connection.gradient_enabled = True
-            return 'Gradients re-enabled.'
+            return 'Gradient enabled. Colors are: (%i, %i, %i) (%i, %i, %i)' % (
+                connection.gradient_colors[0] + connection.gradient_colors[1])
         else:
             connection.gradient_enabled = False
             return 'No longer making gradients.'
@@ -32,7 +35,23 @@ def gradient(connection, *colors):
     except ValueError:
         return 'All args must be integers.'
 
+@alias('grf')
+def gradientfrom(connection):
+    if not connection.gradient_colors:
+        connection.gradient_colors = [(0,0,0), (0,0,0)]
+    connection.gradient_colors[0] = connection.color
+    return 'Gradient from color is now: (%i %i %i)' % connection.color
+
+@alias('grt')
+def gradientto(connection):
+    if not connection.gradient_colors:
+        connection.gradient_colors = [(0,0,0), (0,0,0)]
+    connection.gradient_colors[1] = connection.color
+    return 'Gradient to color is now: (%i %i %i)' % connection.color
+
 add(gradient)
+add(gradientfrom)
+add(gradientto)
 
 def build_gradient_line(protocol, colors, points):
     sp = cbc.ServerPlayer()
@@ -50,7 +69,7 @@ def build_gradient_line(protocol, colors, points):
     map = protocol.map
     for i in xrange(len(points)):
         if lp:
-            pct = (i+0.0) / lp, 1 - (i+0.0) / lp
+            pct = 1 - (i+0.0) / lp, (i+0.0) / lp
         else:
             pct = (1,0)
         
