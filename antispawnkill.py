@@ -33,5 +33,6 @@ def apply_script(protocol, connection, config):
         
         def on_spawn(self, pos):
             self.spawn_time = int( time() )
+            return connection.on_spawn(self, pos)
 
     return ASKProtocol, ASKConnection
