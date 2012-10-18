@@ -27,7 +27,7 @@ def apply_script(protocol, connection, config):
     class ASKConnection(connection):
         spawn_time = 0
         def on_hit(self, hit_amount, hit_player, type, grenade):
-            if int( time() ) - self.spawn_time < self.protocol.ask_time:
+            if int( time() ) - hit_player.spawn_time < self.protocol.ask_time:
                 return False
             return connection.on_hit(self, hit_amount, hit_player, type, grenade)
         
