@@ -18,7 +18,7 @@ def antispawnkill(connection, seconds):
     protocol = connection.protocol
     seconds = int(seconds)
     protocol.ask_time = seconds if seconds <= MAX_SECS_NODAMAGE else MAX_SECS_NODAMAGE
-    connection.send_chat("Anti-spawnkill time set to %s seconds by %s" % ( protocol.ask_time, connection.name ), irc = True)
+    connection.protocol.send_chat("Anti-spawnkill time set to %s seconds by %s" % ( protocol.ask_time, connection.name ), irc = True)
 
 add(antispawnkill)
 
@@ -32,9 +32,7 @@ def my_invisible(connection):
     player.invisible = not player.invisible
     player.filter_visibility_data = player.invisible
 
-    player.send_chat("now visible") if not player.invisible
-
-    if not player.invisible:
+    if not player.invisible and player.world_object is not None:
         x, y, z = player.world_object.position.get()
         create_player.player_id = player.player_id
         create_player.name = player.name
@@ -69,6 +67,8 @@ def my_invisible(connection):
         protocol.send_contained(set_color, sender = player, save = True)
         protocol.send_contained(input_data, sender = player)
         protocol.send_contained(weapon_input, sender = player)
+
+        player.send_chat("Now visible.")
 
 def apply_script(protocol, connection, config):
     class ASKProtocol(protocol):
