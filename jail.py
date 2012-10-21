@@ -115,7 +115,7 @@ def apply_script(protocol, connection, config):
             elif coord in jail_coords and not self.user_types.admin:
                 self.send_chat("Stop trying to destroy the jail, %s!" % self.name)
                 return False
-            return connection.on_block_build_attempt(self, x, y, z)
+            return connection.on_block_destroy(self, x, y, z, mode)
         def on_line_build_attempt(self, points):
             x, y, z = self.get_location()
             coord = to_coordinates(x, y)
