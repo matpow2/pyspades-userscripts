@@ -16,8 +16,8 @@ def apply_script(protocol, connection, config):
         
         def add_score(self, score):
             connection.add_score(self, score)
-            if self.streak % STREAK_REQUIREMENT == 0
-            and self.streak != self.last_streak:
+            if (self.streak % STREAK_REQUIREMENT == 0
+            and self.streak != self.last_streak):
                 self.refill()
                 self.last_streak = self.streak
 
