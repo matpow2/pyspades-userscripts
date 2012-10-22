@@ -77,7 +77,7 @@ add(free_from_jail)
 
 @name('jailbreak')
 @admin
-def free_all(connection):aa
+def free_all(connection):
     protocol = connection.protocol
     for playersJailed in jail_list:
         player = get_player(protocol, playersJailed)
