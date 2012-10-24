@@ -31,6 +31,8 @@ def jail_player(connection, value = None, *args):
         elif not player.jailed:
             player.jailed = True # Set player to jailed
             player.reason = reason
+            player.squad  = None
+            player.squad_pref = None
             player.set_location(jail_location) # Move player to jail
             connection.protocol.send_chat("%s was sent to jail by %s for reason(s): %s" % (player.name, connection.name, reason)) # Message
             connection.protocol.irc_say("* %s jailed %s for reason: %s" % (connection.name, player.name, reason)) # Message
