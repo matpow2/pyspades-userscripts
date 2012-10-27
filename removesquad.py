@@ -17,7 +17,7 @@ def remove_squad(self, player_name):
     if player.squad is not None:
         player.squad = None
         player.squad_pref = None
-        self.join_squad(squad, squad_pref)
+        player.join_squad(None, None)
         return 'Removed player %s from their squad.' % player.name
     else:
         return 'Player %s is not in a squad!' % player.name
