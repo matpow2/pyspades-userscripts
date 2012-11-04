@@ -325,8 +325,9 @@ def apply_script(protocol, connection, config):
             elif self.qb_recording == Q_COPYING:
                 blocks = get_blocks(self.protocol.map, self.qb_record_origin, (x,y,z), self.qb_record_colors)
                 blocks = shift_origin_all(blocks, self.qb_record_origin)
-                blocks = rotate_all(blocks, EAST, self.qb_record_dir)
+                blocks = rotate_all(blocks, self.qb_record_dir, EAST)
                 self.qb_recorded = dict(blocks)
+                self.qb_recording = Q_STOPPED
                 self.send_chat('Copied area to buffer!')
                 cont = False
             
