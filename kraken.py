@@ -1020,8 +1020,9 @@ def apply_script(protocol, connection, config):
         def remove_block(self, x, y, z, user = False):
             if z >= 63:
                 return False
-            if not self.map.remove_point(x, y, z):
+            if not self.map.get_solid(x, y, z):
                 return False
+            self.map.remove_point(x, y, z)
             block_action.value = DESTROY_BLOCK
             block_action.player_id = 32
             block_action.x = x
