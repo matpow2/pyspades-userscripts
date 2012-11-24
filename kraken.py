@@ -15,41 +15,40 @@ from pyspades.collision import vector_collision, distance_3d_vector
 from pyspades.constants import *
 from commands import name, add, get_player, admin
 
-ALLOW_KRAKEN_COMMAND = False
+ALLOW_KRAKEN_COMMAND = True
 
-USE_DAYCYCLE = True
+USE_DAYCYCLE = False
 RESPAWN_TIME = 15
-FALLING_BLOCK_COLOR = 0x606060
+FALLING_BLOCK_COLOR = (0x60, 0x60, 0x60)
 FALLING_BLOCK_DAMAGE = 100
 FALLING_BLOCK_Z = 0
 REGEN_ONSET = 2.0
 REGEN_FREQUENCY = 0.15
 REGEN_AMOUNT = 3
-WATER_DAMAGE = 25
 GRAB_DAMAGE = 40
 EYE_PAIN_TIME = 8.0
-KRAKEN_BLACK = 0x000000
-KRAKEN_BLOOD = make_color(120, 255, 120)
+KRAKEN_BLACK = (0,0,0)
+KRAKEN_BLOOD = (120, 255, 120)
 KRAKEN_EYE_SMALL = [
-    ( 0, 0, -1, 0xC00000),
-    ( 0, 0, -2, 0x400000),
-    ( 0, 0, -3, 0xC00000),
-    (-1, 0, -1, 0xFF0000),
-    (-1, 0, -2, 0xC00000),
-    (-1, 0, -3, 0x800000),
-    ( 1, 0, -1, 0xFF0000),
-    ( 1, 0, -2, 0xC00000),
-    ( 1, 0, -3, 0xFFFFFF)]
+    ( 0, 0, -1, (0xC0, 0x00, 0x00)),
+    ( 0, 0, -2, (0x40, 0x00, 0x00)),
+    ( 0, 0, -3, (0xC0, 0x00, 0x00)),
+    (-1, 0, -1, (0xFF, 0x00, 0x00)),
+    (-1, 0, -2, (0xC0, 0x00, 0x00)),
+    (-1, 0, -3, (0x80, 0x00, 0x00)),
+    ( 1, 0, -1, (0xFF, 0x00, 0x00)),
+    ( 1, 0, -2, (0xC0, 0x00, 0x00)),
+    ( 1, 0, -3, (0xFF, 0xFF, 0xFF))]
 KRAKEN_EYE_SMALL_CLOSED = [
-    (-1, 0, -1, 0x000000),
-    (-1, 0, -2, 0x000000),
-    (-1, 0, -3, 0x000000),
-    ( 1, 0, -1, 0x000000),
-    ( 1, 0, -2, 0x000000),
-    ( 1, 0, -3, 0x000000),
-    ( 0, 0, -1, 0x000000),
-    ( 0, 0, -2, 0x000000),
-    ( 0, 0, -3, 0x000000)]
+    (-1, 0, -1, (0x00, 0x00, 0x00)),
+    (-1, 0, -2, (0x00, 0x00, 0x00)),
+    (-1, 0, -3, (0x00, 0x00, 0x00)),
+    ( 1, 0, -1, (0x00, 0x00, 0x00)),
+    ( 1, 0, -2, (0x00, 0x00, 0x00)),
+    ( 1, 0, -3, (0x00, 0x00, 0x00)),
+    ( 0, 0, -1, (0x00, 0x00, 0x00)),
+    ( 0, 0, -2, (0x00, 0x00, 0x00)),
+    ( 0, 0, -3, (0x00, 0x00, 0x00))]
 
 def cube(s):
     s0, s1 = -s / 2 + 1, s / 2 + 1
@@ -1014,14 +1013,14 @@ def apply_script(protocol, connection, config):
             reactor.callLater(eta, self.falling_block_collide, x, y, z, size)
         
         def set_block_color(self, color):
-            set_color.value = color
+            set_color.value = make_color(*color)
             set_color.player_id = 32
             self.send_contained(set_color, save = True)
         
         def remove_block(self, x, y, z, user = False):
             if z >= 63:
                 return False
-            if not self.map.remove_point(x, y, z, user):
+            if not self.map.remove_point(x, y, z):
                 return False
             block_action.value = DESTROY_BLOCK
             block_action.player_id = 32
@@ -1035,7 +1034,7 @@ def apply_script(protocol, connection, config):
             if force:
                 self.remove_block(x, y, z)
             if not self.map.get_solid(x, y, z):
-                self.map.set_point_unsafe_int(x, y, z, color)
+                self.map.set_point(x, y, z, color)
                 block_action.value = BUILD_BLOCK
                 block_action.player_id = 32
                 block_action.x = x
@@ -1104,7 +1103,7 @@ def apply_script(protocol, connection, config):
             self.regen_loop = None
             connection.on_disconnect(self)
         
-        def on_kill(self, by = None):
+        def on_kill(self, killer, type, grenade):
             if self.protocol.boss:
                 if self.grabbed_by:
                     self.grabbed_by.grabbed_player = None
@@ -1116,7 +1115,7 @@ def apply_script(protocol, connection, config):
                 else:
                     self.send_chat('You died! Yell at your friends to walk '
                         'over you to revive you.')
-            connection.on_kill(self, by)
+            connection.on_kill(self, killer, type, grenade)
         
         def on_weapon_set(self, value):
             if self.protocol.boss and self.regenerating:
@@ -1135,10 +1134,6 @@ def apply_script(protocol, connection, config):
             if not self.protocol.boss_ready:
                 connection.on_position_update(self)
                 return
-            if is_valid_enemy(self) and self.world_object.position.z >= 61:
-                self.got_water_damage = True
-                self.hit(WATER_DAMAGE)
-                self.got_water_damage = False
             if (not self.world_object.dead and not self.grabbed_by
                 and not self.trapped):
                 for player in self.protocol.players.values():
@@ -1168,7 +1163,7 @@ def apply_script(protocol, connection, config):
                 self.protocol.boss.on_block_removed(x, y, z)
             connection.on_block_removed(self, x, y, z)
         
-        def on_hit(self, hit_amount, hit_player):
+        def on_hit(self, hit_amount, hit_player, type, grenade):
             self.last_hit = reactor.seconds()
             if self.regenerating and not self.regen_loop.running:
                 self.regen_loop.start(REGEN_FREQUENCY)
@@ -1176,7 +1171,7 @@ def apply_script(protocol, connection, config):
                 if self is hit_player and self.hp:
                     if hit_amount >= self.hp:
                         return self.hp - 1
-            return connection.on_hit(self, hit_amount, hit_player)
+            return connection.on_hit(self, hit_amount, hit_player, type, grenade)
         
         def on_fall(self, damage):
             if self.grabbed_by or self.regenerating:
