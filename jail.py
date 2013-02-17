@@ -124,7 +124,7 @@ def apply_script(protocol, connection, config):
             if self.jailed:
                 self.send_chat("You can't build when you're jailed! You were jailed for: %s" % (self.reason))
                 return False
-            elif coord == in jail_coords and not self.user_types.admin:
+            elif coord in jail_coords and not self.user_types.admin:
                 self.send_chat("You can't build near the jail, %s!" % self.name)
                 return False
             return connection.on_line_build_attempt(self, points)
